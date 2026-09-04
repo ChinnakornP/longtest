@@ -3,7 +3,23 @@ import { useOrgStore } from '@/lib/stores/org-store';
 import { authEvents } from './auth-events';
 import type { ApiErrorBody } from './types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+// A blank base means "same origin", which only resolves to something real in
+// dev, where the T05 mock lives at that origin (apps/web/src/app/api/v1/**).
+// In production apps/web has no backend of its own (ADR-007) - fail the
+// build/boot instead of silently 404ing every request when the env var was
+// left unset.
+function resolveApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (configured) return configured;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'NEXT_PUBLIC_API_BASE_URL must be set in production - apps/web has no backend of its own (see docs/adr/ADR-007-web-ships-no-backend.md).',
+    );
+  }
+  return '';
+}
+
+const API_BASE = resolveApiBase();
 
 export class ApiError extends Error {
   readonly status: number;

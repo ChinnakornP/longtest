@@ -49,15 +49,20 @@ export function requireOrgAccess(
   return { user, role: membership.role };
 }
 
+const SESSION_COOKIE_ATTRS = {
+  httpOnly: true,
+  secure: true,
+  sameSite: 'lax',
+  path: '/',
+} as const;
+
 export function setSessionCookie(response: NextResponse, token: string, expiresAt: number): void {
   response.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    path: '/',
+    ...SESSION_COOKIE_ATTRS,
     expires: new Date(expiresAt),
   });
 }
 
 export function clearSessionCookie(response: NextResponse): void {
-  response.cookies.set(SESSION_COOKIE, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 });
+  response.cookies.set(SESSION_COOKIE, '', { ...SESSION_COOKIE_ATTRS, maxAge: 0 });
 }
