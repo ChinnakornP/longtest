@@ -1,0 +1,67 @@
+# sqlc generates the query layer from the same migration files the migrator
+# applies, so the generated Go cannot drift from the deployed schema: a query
+# that references a column no other migration created fails `sqlc generate`
+# rather than at runtime.
+#
+# Regenerate with `make gen-sqlc` after touching migrations/ or
+# internal/db/queries/. The output directory is generated code and is committed
+# so that `go build` works without sqlc installed.
+version: "2"
+
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: internal/db/queries
+    strict_function_checks: true
+    gen:
+      go:
+        package: dbgen
+        out: internal/db/dbgen
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_json_tags: false
+        emit_result_struct_pointers: false
+        emit_params_struct_pointers: false
+        # A generated struct field named OrgId reads badly next to the
+        # hand-written code, and TestQueriesAreOrgScoped matches on OrgID.
+        rename:
+          org_id: "OrgID"
+          user_id: "UserID"
+          run_id: "RunID"
+          page_id: "PageID"
+          project_id: "ProjectID"
+          runtime_id: "RuntimeID"
+          test_case_id: "TestCaseID"
+          execution_id: "ExecutionID"
+          artifact_id: "ArtifactID"
+          finding_id: "FindingID"
+          source_run_id: "SourceRunID"
+          last_seen_run_id: "LastSeenRunID"
+          first_seen_run_id: "FirstSeenRunID"
+          base_url: "BaseURL"
+        overrides:
+          # google/uuid over pgtype.UUID: every layer above this one passes ids
+          # around as uuid.UUID, and pgtype.UUID would force a conversion at
+          # each boundary.
+          - db_type: uuid
+            go_type: github.com/google/uuid.UUID
+          - db_type: uuid
+            nullable: true
+            go_type:
+              import: github.com/google/uuid
+              type: NullUUID
+          - db_type: pg_catalog.timestamptz
+            go_type: time.Time
+          - db_type: pg_catalog.timestamptz
+            nullable: true
+            go_type:
+              import: github.com/jackc/pgx/v5/pgtype
+              type: Timestamptz
+          # jsonb columns hold documents owned by packages/qa-schema. They are
+          # carried as raw bytes so the backend never re-marshals (and thereby
+          # reorders or lossily rewrites) a payload it does not own.
+          - db_type: jsonb
+            go_type: encoding/json.RawMessage
+          - db_type: citext
+            go_type: string
