@@ -26,7 +26,10 @@ type Store interface {
 
 // SessionConfig configures cookie issuance.
 type SessionConfig struct {
-	// CookieName is the browser-visible name of the session cookie.
+	// CookieName is the browser-visible name of the session cookie. Leave it
+	// empty and [SessionCookieName] derives it from Secure and Domain, which
+	// is what keeps the `__Host-` prefix and its preconditions from drifting
+	// apart. Set it only to pin a name in a test.
 	CookieName string
 	// TTL is the absolute lifetime of a session. There is no sliding renewal:
 	// a stolen cookie is usable for at most this long, whatever the thief does
@@ -53,11 +56,43 @@ type SessionConfig struct {
 // state-changing route in this API is a POST/PATCH/DELETE.
 func DefaultSessionConfig() SessionConfig {
 	return SessionConfig{
-		CookieName:    "qa_session",
+		// CookieName is deliberately unset: see SessionCookieName.
 		TTL:           7 * 24 * time.Hour,
 		Secure:        true,
 		TouchInterval: 5 * time.Minute,
 	}
+}
+
+// SessionCookieBaseName is the name without the `__Host-` prefix.
+const SessionCookieBaseName = "qa_session"
+
+// HostPrefix is the cookie-name prefix browsers enforce preconditions on.
+const HostPrefix = "__Host-"
+
+// SessionCookieName derives the cookie name from the attributes it will be
+// sent with.
+//
+// `__Host-` is the only thing that stops a subdomain of the deployment from
+// overwriting the session cookie of the main origin: a browser refuses to
+// store a cookie with that prefix unless it is Secure, Path=/ and has no
+// Domain, and those three together mean only the exact host that set it can
+// replace it. Cookie shadowing from a subdomain is otherwise unpreventable —
+// nothing in a Set-Cookie from `evil.app.example.com` distinguishes it from
+// one the real app sent.
+//
+// The preconditions are why this is one function rather than a constant.
+// Secure is configuration (local development is served over plain http, where
+// a browser silently drops a Secure cookie), and Domain is configuration too.
+// If the name and the attributes were set independently, a deployment with
+// Secure=false would emit a `__Host-` cookie that the browser discards without
+// telling anyone, and login would appear to do nothing for a reason no log
+// records. Deriving the name from the attributes makes that combination
+// unrepresentable.
+func SessionCookieName(secure bool, domain string) string {
+	if secure && domain == "" {
+		return HostPrefix + SessionCookieBaseName
+	}
+	return SessionCookieBaseName
 }
 
 // SessionCookieSameSite is the mode used for the session cookie. It is a
@@ -82,7 +117,7 @@ type Sessions struct {
 // NewSessions returns a session manager over store.
 func NewSessions(store Store, cfg SessionConfig) *Sessions {
 	if cfg.CookieName == "" {
-		cfg.CookieName = DefaultSessionConfig().CookieName
+		cfg.CookieName = SessionCookieName(cfg.Secure, cfg.Domain)
 	}
 	if cfg.TTL <= 0 {
 		cfg.TTL = DefaultSessionConfig().TTL

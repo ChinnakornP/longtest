@@ -11,6 +11,16 @@
 /.gitignore             @ChinnakornP
 /CODEOWNERS             @ChinnakornP
 
+# The prompt-injection, sandbox and credential boundary. Widening an egress
+# allowlist, adding a path to the sandbox, or removing an injection corpus case
+# are all quiet ways to remove a control, so they get the same review as CI.
+/daemon/security/       @ChinnakornP
+/daemon/agent/prompts/  @ChinnakornP
+/e2e/injection-corpus/  @ChinnakornP
+/docs/SECURITY.md       @ChinnakornP
+/docs/threat-model.md   @ChinnakornP
+/.gitleaks.toml         @ChinnakornP
+
 # Cross-cutting contracts: a change here breaks every other component.
 /packages/qa-schema/    @ChinnakornP
 /docs/adr/              @ChinnakornP

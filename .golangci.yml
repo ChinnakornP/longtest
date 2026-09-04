@@ -19,6 +19,17 @@ linters:
         linters:
           - gosec
 
+      # The Landlock bindings are raw syscalls: the kernel takes struct
+      # pointers by address and there is no wrapper in the standard library,
+      # so G103 fires on every call. Suppressed for this file only, not for
+      # gosec generally, and every buffer is a fixed size laid out immediately
+      # above its use. This is the file that enforces "the AI CLI cannot read
+      # outside its workspace" - see docs/SECURITY.md.
+      - path: daemon/security/landlock_linux\.go
+        text: "G103"
+        linters:
+          - gosec
+
 formatters:
   enable:
     - gofmt

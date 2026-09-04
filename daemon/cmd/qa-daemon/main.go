@@ -26,9 +26,22 @@ import (
 	"syscall"
 
 	"github.com/ChinnakornP/longtest/daemon/runtime"
+	"github.com/ChinnakornP/longtest/daemon/security"
 )
 
 func main() {
+	// First, before flags, signals or anything else is set up: a re-exec of
+	// this binary as a sandbox stub has to apply its restrictions and hand off
+	// to the target program. security.Spec launches every sandboxed child by
+	// re-execing us with a marker argv, so that the rlimits and the Landlock
+	// ruleset are applied in the child, after fork and before exec — there is
+	// then no window in which the process exists unrestricted. Without this
+	// dispatch the re-exec would fall through to the CLI parser below, print
+	// "unknown command", and the sandbox would silently do nothing.
+	if security.IsSandboxStub() {
+		security.RunSandboxStub()
+	}
+
 	// Signals are handled here rather than in the runtime package so that a
 	// second Ctrl+C is fatal: the first asks for a graceful shutdown, and an
 	// operator who presses it again wants out now, not another wait.
