@@ -49,6 +49,36 @@ export function requireOrgAccess(
   return { user, role: membership.role };
 }
 
+/**
+ * Org-scoped auth for routes with no {orgId} path segment - the T08 contract
+ * (project/run/runtime/report) puts the org purely in X-Org-ID, unlike the
+ * T05 routes requireOrgAccess covers. Same membership/role check, just
+ * without the path-vs-header assertion.
+ */
+export function requireOrgHeader(
+  request: NextRequest,
+  allowedRoles?: OrgRole[],
+): { user: StoredUser; orgId: string; role: OrgRole } | NextResponse {
+  const user = requireSession(request);
+  if (user instanceof NextResponse) return user;
+
+  const orgId = request.headers.get('X-Org-ID');
+  if (!orgId) {
+    return errorResponse(403, 'ORG_REQUIRED', 'X-Org-ID header is required.');
+  }
+
+  const membership = membershipFor(user.id, orgId);
+  if (!membership) {
+    return errorResponse(403, 'NOT_A_MEMBER', 'You are not a member of this organization.');
+  }
+
+  if (allowedRoles && !allowedRoles.includes(membership.role)) {
+    return errorResponse(403, 'FORBIDDEN', `Requires one of: ${allowedRoles.join(', ')}.`);
+  }
+
+  return { user, orgId, role: membership.role };
+}
+
 const SESSION_COOKIE_ATTRS = {
   httpOnly: true,
   secure: true,
