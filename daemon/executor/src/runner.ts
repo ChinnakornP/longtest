@@ -249,13 +249,34 @@ async function executeSteps(
     const step = steps[i];
     if (step === undefined) continue;
     const stepStartedAt = new Date();
-    const result = await runStep(step, {
-      page,
-      appMap: appMapIndex,
-      baseUrl: session.baseUrl,
-      stepTimeoutMs: opts.stepTimeoutMs ?? 15_000,
-      defaultStepTimeoutMs: 15_000,
-    });
+    let result;
+    try {
+      result = await runStep(step, {
+        page,
+        appMap: appMapIndex,
+        baseUrl: session.baseUrl,
+        stepTimeoutMs: opts.stepTimeoutMs ?? 15_000,
+        defaultStepTimeoutMs: 15_000,
+      });
+    } catch (error) {
+      const stepEndedAt = new Date();
+      let shotId: string | undefined;
+      try {
+        shotId = await evidence.captureScreenshot(page, { name: `step-${i}-failure` });
+      } catch {
+        shotId = undefined;
+      }
+      const stepResult = emptyStepResult(i, step.action, 'error');
+      const message = describeError(error);
+      stepResult.message = message;
+      stepResult.startedAt = stepStartedAt.toISOString();
+      stepResult.endedAt = stepEndedAt.toISOString();
+      stepResult.durationMs = Math.max(0, stepEndedAt.getTime() - stepStartedAt.getTime());
+      if (shotId !== undefined) stepResult.artifactIds = [shotId];
+      builder.addStep(stepResult);
+      const code: RunnerErrorCode = isPlaywrightTimeout(error) ? 'TIMEOUT' : 'NETWORK_ERROR';
+      throw new ExecutorError(code, message, { stepIndex: i });
+    }
     const stepEndedAt = new Date();
 
     if (result.kind === 'unresolved') {
@@ -355,4 +376,21 @@ function sleep(ms: number): Promise<void> {
 function describeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+/**
+ * True when `error` is a Playwright timeout. The naming differs slightly
+ * between Playwright versions (`TimeoutError` lives under both `playwright`
+ * and `@playwright/test`), so we sniff the prototype chain instead of
+ * importing either.
+ */
+function isPlaywrightTimeout(error: unknown): boolean {
+  if (error === null || typeof error !== 'object') return false;
+  let proto: object | null = Object.getPrototypeOf(error);
+  while (proto !== null) {
+    const name = (proto as { name?: string }).name;
+    if (name === 'TimeoutError') return true;
+    proto = Object.getPrototypeOf(proto);
+  }
+  return false;
 }

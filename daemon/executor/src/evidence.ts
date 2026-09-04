@@ -100,11 +100,18 @@ export class EvidenceCollector {
   }
 
   /** Capture a screenshot to disk and register the artifact. Returns the new id. */
-  async captureScreenshot(page: import('playwright').Page, opts: { fullPage?: boolean; name?: string }): Promise<ArtifactId> {
+  async captureScreenshot(page: import('playwright').Page, opts: { fullPage?: boolean; name?: string; timeoutMs?: number }): Promise<ArtifactId> {
     const id = mintArtifactId('screenshot', this.nextIndex++);
     const filename = opts.name ? `${sanitizeName(opts.name)}.png` : `${id}.png`;
     const fullPath = join(this.artifactDir, filename);
-    const buffer = await page.screenshot({ fullPage: opts.fullPage ?? false });
+    // Bound the screenshot. The page may be in a bad state — a hung
+    // request, a navigation that never completed, an aborted crash — and
+    // waiting 30s for the default Playwright action timeout would leave
+    // the harness hanging too.
+    const buffer = await page.screenshot({
+      fullPage: opts.fullPage ?? false,
+      timeout: opts.timeoutMs ?? 5_000,
+    });
     await writeFile(fullPath, buffer);
     const sha256 = sha256Hex(buffer);
     const size = buffer.byteLength;

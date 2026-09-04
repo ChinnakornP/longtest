@@ -27,7 +27,8 @@ import { runTestCase } from '../src/runner.ts';
 import { Session } from '../src/session.ts';
 import { validate } from '@qa/schema';
 
-const TSX_BIN = join(__dirname, '..', '..', 'daemon', 'executor', 'node_modules', '.bin', 'tsx');
+const REPO_ROOT = join(__dirname, '..', '..', '..');
+const TSX_BIN = join(REPO_ROOT, 'daemon', 'executor', 'node_modules', '.bin', 'tsx');
 
 function chromiumAvailable(): boolean {
   const cache = join(process.env['HOME'] ?? tmpdir(), '.cache', 'ms-playwright');
