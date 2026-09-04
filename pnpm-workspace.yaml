@@ -2,9 +2,16 @@ packages:
   - apps/*
   - packages/*
   - daemon/executor
+  - e2e/fixture-app
 
 # Supply-chain guard: refuse to resolve a package version that was published
 # less than 24h ago. Compromised-maintainer npm attacks are caught and yanked
 # within hours, and nothing in this repo needs a same-day release.
 # Add a reviewed `<name>@<version>` to minimumReleaseAgeExclude to override.
 minimumReleaseAge: 1440
+
+# esbuild ships a postinstall script that downloads its native binary. It is
+# safe to run; we whitelist it here so pnpm 11's postinstall guard does not
+# refuse every install.
+onlyBuiltDependencies:
+  - esbuild
