@@ -5,7 +5,7 @@ import type { ApiErrorBody } from './types';
 
 // A blank base means "same origin", which only resolves to something real in
 // dev, where the T05 mock lives at that origin (apps/web/src/app/api/v1/**).
-// In production apps/web has no backend of its own (ADR-007) - fail the
+// In production apps/web has no backend of its own (ADR-008) - fail the
 // build/boot instead of silently 404ing every request when the env var was
 // left unset.
 function resolveApiBase(): string {
@@ -13,7 +13,7 @@ function resolveApiBase(): string {
   if (configured) return configured;
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
-      'NEXT_PUBLIC_API_BASE_URL must be set in production - apps/web has no backend of its own (see docs/adr/ADR-007-web-ships-no-backend.md).',
+      'NEXT_PUBLIC_API_BASE_URL must be set in production - apps/web has no backend of its own (see docs/adr/0008-web-ships-no-backend.md).',
     );
   }
   return '';

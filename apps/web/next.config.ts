@@ -3,7 +3,7 @@ import type { NextConfig } from 'next';
 // The T05 mock backend lives in files named `*.mock.ts`. A production build
 // drops `mock.ts` from pageExtensions, so those route handlers are never
 // compiled into the output at all - absent, not gated at runtime. See
-// docs/adr/ADR-007-web-ships-no-backend.md.
+// docs/adr/0008-web-ships-no-backend.md.
 const isProduction = process.env.NODE_ENV === 'production';
 
 const nextConfig: NextConfig = {

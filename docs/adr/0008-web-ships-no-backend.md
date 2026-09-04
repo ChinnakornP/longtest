@@ -1,4 +1,4 @@
-# ADR-007: apps/web ships no backend
+# ADR-008: apps/web ships no backend
 
 - **Status:** Accepted — 2026-09-04
 - **Affected:** `apps/web` (LONG-9), `server/internal/{auth,org}` (LONG-7),

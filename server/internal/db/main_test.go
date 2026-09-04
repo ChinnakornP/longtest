@@ -173,8 +173,10 @@ func newProject(t *testing.T, s *Store, orgID uuid.UUID) dbgen.Project {
 func newRuntime(t *testing.T, s *Store, orgID uuid.UUID) dbgen.Runtime {
 	t.Helper()
 	r, err := s.CreateRuntime(t.Context(), dbgen.CreateRuntimeParams{
-		OrgID: orgID,
-		Name:  "runtime-" + uuid.NewString(),
+		OrgID:    orgID,
+		Name:     "runtime-" + uuid.NewString(),
+		Version:  "0.0.0-test",
+		HostInfo: []byte(`{"hostname":"test"}`),
 	})
 	if err != nil {
 		t.Fatalf("create runtime: %v", err)

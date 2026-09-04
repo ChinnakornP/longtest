@@ -605,6 +605,21 @@ type FindingEvidence struct {
 	CreatedAt  pgtype.Timestamptz
 }
 
+type Invite struct {
+	ID         uuid.UUID
+	OrgID      uuid.UUID
+	Email      string
+	Role       MembershipRole
+	TokenHash  []byte
+	InvitedBy  uuid.NullUUID
+	ExpiresAt  pgtype.Timestamptz
+	AcceptedAt pgtype.Timestamptz
+	AcceptedBy uuid.NullUUID
+	RevokedAt  pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
 type Membership struct {
 	OrgID     uuid.UUID
 	UserID    uuid.UUID
@@ -707,6 +722,8 @@ type Runtime struct {
 	DisabledAt pgtype.Timestamptz
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
+	// Machine facts reported at pairing time (hostname, os, arch). Rendered, never queried into.
+	HostInfo json.RawMessage
 }
 
 type RuntimeToken struct {
