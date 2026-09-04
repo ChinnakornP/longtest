@@ -102,6 +102,12 @@ secret-scan hit.
 ## Contributing
 
 `make lint` and `make test` must pass before you push; CI runs the same
-targets. Changes under `.github/`, `docker/`, `docker-compose.yml`,
+targets, so a green local run predicts a green CI run.
+
+> **CI is not active yet.** The pipeline lives at
+> `.github/ci-workflow-pending/ci.yml` because the bootstrap token lacked the
+> `workflow` scope. Moving it into `.github/workflows/` is a one-line `git mv`
+> plus a push from a credential that has that scope — see the README in that
+> directory. Changes under `.github/`, `docker/`, `docker-compose.yml`,
 `.env.example` or `packages/qa-schema/` need a review from the owners listed in
 `CODEOWNERS`.
