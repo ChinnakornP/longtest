@@ -95,8 +95,44 @@ CREATE TABLE execution_steps (
 CREATE INDEX execution_steps_org_execution_idx
     ON execution_steps (org_id, execution_id, step_index);
 
+-- Per-assertion outcome, mirroring execution-result@1 AssertionResult.
+--
+-- Without this the assertion results the executor reports are dropped on
+-- ingest, and the Failure Analyst (LONG-17) cannot tell "the save button did
+-- nothing" from "the row rendered the old name": both arrive as a failed
+-- execution with no statement of what was expected. Kept parallel to
+-- execution_steps rather than folded into it because a case's assertions are
+-- indexed separately from its steps.
+CREATE TABLE execution_assertions (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id          uuid             NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
+    execution_id    uuid             NOT NULL,
+    -- 0-based index into the test case's `assertions` array.
+    assertion_index integer          NOT NULL CHECK (assertion_index >= 0),
+    -- The assertion vocabulary is frozen in packages/qa-schema and validated
+    -- there before ingest; text here for the same reason execution_steps.action
+    -- is text, so that adding a member is a schema change and not a migration.
+    type            text             NOT NULL,
+    status          execution_result NOT NULL DEFAULT 'pending',
+    -- Both lifted off the page under test: untrusted text, stored as data.
+    expected        text             NOT NULL DEFAULT '',
+    actual          text             NOT NULL DEFAULT '',
+    message         text             NOT NULL DEFAULT '',
+    created_at      timestamptz      NOT NULL DEFAULT now(),
+
+    CONSTRAINT execution_assertions_org_id_id_key UNIQUE (org_id, id),
+    CONSTRAINT execution_assertions_execution_id_assertion_index_key
+        UNIQUE (execution_id, assertion_index),
+    CONSTRAINT execution_assertions_org_execution_fkey
+        FOREIGN KEY (org_id, execution_id) REFERENCES executions (org_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX execution_assertions_org_execution_idx
+    ON execution_assertions (org_id, execution_id, assertion_index);
+
 -- +goose Down
 
+DROP TABLE IF EXISTS execution_assertions;
 DROP TABLE IF EXISTS execution_steps;
 DROP TABLE IF EXISTS executions;
 DROP TYPE IF EXISTS failure_class;

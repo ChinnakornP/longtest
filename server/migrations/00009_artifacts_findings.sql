@@ -7,15 +7,31 @@
 -- run_id. A daemon that tries to register an object under another tenant's
 -- prefix is rejected by the database, not just by the service layer.
 --
--- Layout (contract F, org-scoped per the multi-tenant decision):
---   orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/{testCaseId}/{name}
--- with the {testCaseId} segment omitted for run-level artifacts.
+-- Layout (execution-result@1 Artifact.key, org-scoped per the multi-tenant
+-- decision):
+--   orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/{testCaseRef}/{name}
+-- with the {testCaseRef} segment omitted for run-level artifacts.
+--
+-- That segment is a test case *ref* (TC-001), not this database's uuid. The
+-- daemon composes the key from the test-case document it was handed over the
+-- control plane, which carries the ref and never the uuid the backend assigns,
+-- so requiring a uuid here would reject every artifact the daemon can produce.
+-- The tenant boundary is the orgs/{orgId}/runs/{runId}/ prefix, which is
+-- checked literally below and is the same prefix the presigned PUT is scoped
+-- to; the tail is only a name.
 
 -- +goose Up
 
+-- Exactly the members of execution-result@1 Artifact.kind. No 'other' escape
+-- hatch: the schema is the source of truth, and a kind the contract cannot
+-- express must fail at ingest rather than be filed under a bucket no consumer
+-- knows how to render.
 CREATE TYPE artifact_kind AS ENUM (
-    'screenshot', 'video', 'trace', 'network', 'console', 'dom', 'report', 'other'
+    'screenshot', 'video', 'trace', 'network', 'console', 'dom', 'report'
 );
+
+-- finding@1 AnalyzedBy.provider.
+CREATE TYPE agent_provider AS ENUM ('claude', 'opencode', 'antigravity');
 
 CREATE TABLE artifacts (
     id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -40,7 +56,7 @@ CREATE TABLE artifacts (
         storage_key ~ (
             '^orgs/' || org_id::text
             || '/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/' || run_id::text
-            || '/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)?'
+            || '/([A-Za-z0-9._-]{1,200}/)?'
             || '[A-Za-z0-9._-]{1,200}$'
         )
     ),
@@ -65,6 +81,8 @@ CREATE TABLE findings (
     -- Step the analyst blamed, 0-based; NULL for a whole-case finding.
     step_index   integer       CHECK (step_index IS NULL OR step_index >= 0),
     failure_class failure_class NOT NULL,
+    -- One-line headline for the report list; the full reasoning is root_cause.
+    summary      text          NOT NULL DEFAULT '' CHECK (length(summary) <= 500),
     root_cause   text          NOT NULL DEFAULT '',
     -- double precision, not numeric: this is a model score that is only ever
     -- compared and rendered, never summed, and float64 keeps sqlc's generated
@@ -72,7 +90,11 @@ CREATE TABLE findings (
     confidence   double precision NOT NULL DEFAULT 0
         CHECK (confidence >= 0 AND confidence <= 1),
     suggested_fix text         NOT NULL DEFAULT '',
-    -- The analyst run that produced this finding, when it differs from run_id.
+    -- Which AI CLI produced this verdict. Kept because a finding is a model
+    -- output: comparing precision across providers (LONG-19) is impossible
+    -- once the attribution has been dropped on ingest.
+    analyzed_by_provider agent_provider,
+    analyzed_by_version  text     NOT NULL DEFAULT '',
     created_at   timestamptz   NOT NULL DEFAULT now(),
     updated_at   timestamptz   NOT NULL DEFAULT now(),
 
@@ -121,4 +143,5 @@ CREATE INDEX finding_evidence_org_artifact_idx ON finding_evidence (org_id, arti
 DROP TABLE IF EXISTS finding_evidence;
 DROP TABLE IF EXISTS findings;
 DROP TABLE IF EXISTS artifacts;
+DROP TYPE IF EXISTS agent_provider;
 DROP TYPE IF EXISTS artifact_kind;

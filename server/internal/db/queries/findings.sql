@@ -4,15 +4,20 @@
 -- report does not stack duplicates.
 -- name: UpsertFinding :one
 INSERT INTO findings (org_id, run_id, execution_id, test_case_id, step_index,
-                      failure_class, root_cause, confidence, suggested_fix)
+                      failure_class, summary, root_cause, confidence,
+                      suggested_fix, analyzed_by_provider, analyzed_by_version)
 VALUES ($1, $2, sqlc.narg(execution_id), sqlc.narg(test_case_id),
-        sqlc.narg(step_index), $3, $4, $5, $6)
+        sqlc.narg(step_index), $3, $4, $5, $6, $7,
+        sqlc.narg(analyzed_by_provider), sqlc.arg(analyzed_by_version))
 ON CONFLICT (execution_id) DO UPDATE
 SET failure_class = EXCLUDED.failure_class,
+    summary = EXCLUDED.summary,
     root_cause = EXCLUDED.root_cause,
     confidence = EXCLUDED.confidence,
     suggested_fix = EXCLUDED.suggested_fix,
-    step_index = EXCLUDED.step_index
+    step_index = EXCLUDED.step_index,
+    analyzed_by_provider = EXCLUDED.analyzed_by_provider,
+    analyzed_by_version = EXCLUDED.analyzed_by_version
 RETURNING *;
 
 -- name: GetFinding :one

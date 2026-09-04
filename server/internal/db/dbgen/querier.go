@@ -150,6 +150,11 @@ type Querier interface {
 	// then: pages + this + workflows = three statements, whatever the map's size.
 	// Fetching elements per page would be the N+1 this replaces.
 	ListElementsForProject(ctx context.Context, arg ListElementsForProjectParams) ([]Element, error)
+	ListExecutionAssertions(ctx context.Context, arg ListExecutionAssertionsParams) ([]ExecutionAssertion, error)
+	// Every assertion of a run in one query. The analyst needs the failing
+	// assertion's expected/actual pair to classify a failure at all, and fetching
+	// them per execution would be the N+1 this replaces.
+	ListExecutionAssertionsForRun(ctx context.Context, arg ListExecutionAssertionsForRunParams) ([]ExecutionAssertion, error)
 	ListExecutionSteps(ctx context.Context, arg ListExecutionStepsParams) ([]ExecutionStep, error)
 	// Every step of a run in one query, for the report view.
 	ListExecutionStepsForRun(ctx context.Context, arg ListExecutionStepsForRunParams) ([]ExecutionStep, error)
@@ -228,6 +233,7 @@ type Querier interface {
 	UpsertElement(ctx context.Context, arg UpsertElementParams) (Element, error)
 	// Bulk form for the discovery ingest; see the note on UpsertPageBatch.
 	UpsertElementBatch(ctx context.Context, arg []UpsertElementBatchParams) *UpsertElementBatchBatchResults
+	UpsertExecutionAssertion(ctx context.Context, arg UpsertExecutionAssertionParams) (ExecutionAssertion, error)
 	UpsertExecutionStep(ctx context.Context, arg UpsertExecutionStepParams) (ExecutionStep, error)
 	// What the failure analyst concluded, and the evidence it cited.
 	// One finding per execution; re-analysis updates in place so regenerating a

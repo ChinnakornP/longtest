@@ -25,20 +25,21 @@ import (
 // This list is the contract from LONG-5 plus finding_evidence, which was added
 // with the same obligations.
 var domainTables = map[string]bool{
-	"projects":           true,
-	"runtimes":           true,
-	"runs":               true,
-	"run_events":         true,
-	"pages":              true,
-	"elements":           true,
-	"workflows":          true,
-	"test_cases":         true,
-	"test_case_versions": true,
-	"executions":         true,
-	"execution_steps":    true,
-	"artifacts":          true,
-	"findings":           true,
-	"finding_evidence":   true,
+	"projects":             true,
+	"runtimes":             true,
+	"runs":                 true,
+	"run_events":           true,
+	"pages":                true,
+	"elements":             true,
+	"workflows":            true,
+	"test_cases":           true,
+	"test_case_versions":   true,
+	"executions":           true,
+	"execution_steps":      true,
+	"execution_assertions": true,
+	"artifacts":            true,
+	"findings":             true,
+	"finding_evidence":     true,
 }
 
 // tenancyTables ARE the tenancy layer: they are how an org_id is established in

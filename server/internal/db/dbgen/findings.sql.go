@@ -30,7 +30,7 @@ func (q *Queries) DeleteFinding(ctx context.Context, arg DeleteFindingParams) (i
 }
 
 const getFinding = `-- name: GetFinding :one
-SELECT id, org_id, run_id, execution_id, test_case_id, step_index, failure_class, root_cause, confidence, suggested_fix, created_at, updated_at FROM findings WHERE org_id = $1 AND id = $2
+SELECT id, org_id, run_id, execution_id, test_case_id, step_index, failure_class, summary, root_cause, confidence, suggested_fix, analyzed_by_provider, analyzed_by_version, created_at, updated_at FROM findings WHERE org_id = $1 AND id = $2
 `
 
 type GetFindingParams struct {
@@ -49,9 +49,12 @@ func (q *Queries) GetFinding(ctx context.Context, arg GetFindingParams) (Finding
 		&i.TestCaseID,
 		&i.StepIndex,
 		&i.FailureClass,
+		&i.Summary,
 		&i.RootCause,
 		&i.Confidence,
 		&i.SuggestedFix,
+		&i.AnalyzedByProvider,
+		&i.AnalyzedByVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -135,7 +138,7 @@ func (q *Queries) ListFindingEvidenceForRun(ctx context.Context, arg ListFinding
 }
 
 const listFindingsForRun = `-- name: ListFindingsForRun :many
-SELECT id, org_id, run_id, execution_id, test_case_id, step_index, failure_class, root_cause, confidence, suggested_fix, created_at, updated_at FROM findings
+SELECT id, org_id, run_id, execution_id, test_case_id, step_index, failure_class, summary, root_cause, confidence, suggested_fix, analyzed_by_provider, analyzed_by_version, created_at, updated_at FROM findings
 WHERE org_id = $1 AND run_id = $2
 ORDER BY confidence DESC, created_at
 `
@@ -162,9 +165,12 @@ func (q *Queries) ListFindingsForRun(ctx context.Context, arg ListFindingsForRun
 			&i.TestCaseID,
 			&i.StepIndex,
 			&i.FailureClass,
+			&i.Summary,
 			&i.RootCause,
 			&i.Confidence,
 			&i.SuggestedFix,
+			&i.AnalyzedByProvider,
+			&i.AnalyzedByVersion,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -243,28 +249,36 @@ func (q *Queries) UnlinkFindingEvidence(ctx context.Context, arg UnlinkFindingEv
 const upsertFinding = `-- name: UpsertFinding :one
 
 INSERT INTO findings (org_id, run_id, execution_id, test_case_id, step_index,
-                      failure_class, root_cause, confidence, suggested_fix)
-VALUES ($1, $2, $7, $8,
-        $9, $3, $4, $5, $6)
+                      failure_class, summary, root_cause, confidence,
+                      suggested_fix, analyzed_by_provider, analyzed_by_version)
+VALUES ($1, $2, $8, $9,
+        $10, $3, $4, $5, $6, $7,
+        $11, $12)
 ON CONFLICT (execution_id) DO UPDATE
 SET failure_class = EXCLUDED.failure_class,
+    summary = EXCLUDED.summary,
     root_cause = EXCLUDED.root_cause,
     confidence = EXCLUDED.confidence,
     suggested_fix = EXCLUDED.suggested_fix,
-    step_index = EXCLUDED.step_index
-RETURNING id, org_id, run_id, execution_id, test_case_id, step_index, failure_class, root_cause, confidence, suggested_fix, created_at, updated_at
+    step_index = EXCLUDED.step_index,
+    analyzed_by_provider = EXCLUDED.analyzed_by_provider,
+    analyzed_by_version = EXCLUDED.analyzed_by_version
+RETURNING id, org_id, run_id, execution_id, test_case_id, step_index, failure_class, summary, root_cause, confidence, suggested_fix, analyzed_by_provider, analyzed_by_version, created_at, updated_at
 `
 
 type UpsertFindingParams struct {
-	OrgID        uuid.UUID
-	RunID        uuid.UUID
-	FailureClass FailureClass
-	RootCause    string
-	Confidence   float64
-	SuggestedFix string
-	ExecutionID  uuid.NullUUID
-	TestCaseID   uuid.NullUUID
-	StepIndex    pgtype.Int4
+	OrgID              uuid.UUID
+	RunID              uuid.UUID
+	FailureClass       FailureClass
+	Summary            string
+	RootCause          string
+	Confidence         float64
+	SuggestedFix       string
+	ExecutionID        uuid.NullUUID
+	TestCaseID         uuid.NullUUID
+	StepIndex          pgtype.Int4
+	AnalyzedByProvider NullAgentProvider
+	AnalyzedByVersion  string
 }
 
 // What the failure analyst concluded, and the evidence it cited.
@@ -275,12 +289,15 @@ func (q *Queries) UpsertFinding(ctx context.Context, arg UpsertFindingParams) (F
 		arg.OrgID,
 		arg.RunID,
 		arg.FailureClass,
+		arg.Summary,
 		arg.RootCause,
 		arg.Confidence,
 		arg.SuggestedFix,
 		arg.ExecutionID,
 		arg.TestCaseID,
 		arg.StepIndex,
+		arg.AnalyzedByProvider,
+		arg.AnalyzedByVersion,
 	)
 	var i Finding
 	err := row.Scan(
@@ -291,9 +308,12 @@ func (q *Queries) UpsertFinding(ctx context.Context, arg UpsertFindingParams) (F
 		&i.TestCaseID,
 		&i.StepIndex,
 		&i.FailureClass,
+		&i.Summary,
 		&i.RootCause,
 		&i.Confidence,
 		&i.SuggestedFix,
+		&i.AnalyzedByProvider,
+		&i.AnalyzedByVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

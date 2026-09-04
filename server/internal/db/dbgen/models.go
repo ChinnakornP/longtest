@@ -13,6 +13,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AgentProvider string
+
+const (
+	AgentProviderClaude      AgentProvider = "claude"
+	AgentProviderOpencode    AgentProvider = "opencode"
+	AgentProviderAntigravity AgentProvider = "antigravity"
+)
+
+func (e *AgentProvider) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AgentProvider(s)
+	case string:
+		*e = AgentProvider(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AgentProvider: %T", src)
+	}
+	return nil
+}
+
+type NullAgentProvider struct {
+	AgentProvider AgentProvider
+	Valid         bool // Valid is true if AgentProvider is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAgentProvider) Scan(value interface{}) error {
+	if value == nil {
+		ns.AgentProvider, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AgentProvider.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAgentProvider) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AgentProvider), nil
+}
+
 type ArtifactKind string
 
 const (
@@ -23,7 +66,6 @@ const (
 	ArtifactKindConsole    ArtifactKind = "console"
 	ArtifactKindDom        ArtifactKind = "dom"
 	ArtifactKindReport     ArtifactKind = "report"
-	ArtifactKindOther      ArtifactKind = "other"
 )
 
 func (e *ArtifactKind) Scan(src interface{}) error {
@@ -509,6 +551,19 @@ type Execution struct {
 	UpdatedAt       pgtype.Timestamptz
 }
 
+type ExecutionAssertion struct {
+	ID             uuid.UUID
+	OrgID          uuid.UUID
+	ExecutionID    uuid.UUID
+	AssertionIndex int32
+	Type           string
+	Status         ExecutionResult
+	Expected       string
+	Actual         string
+	Message        string
+	CreatedAt      pgtype.Timestamptz
+}
+
 type ExecutionStep struct {
 	ID           uuid.UUID
 	OrgID        uuid.UUID
@@ -526,18 +581,21 @@ type ExecutionStep struct {
 }
 
 type Finding struct {
-	ID           uuid.UUID
-	OrgID        uuid.UUID
-	RunID        uuid.UUID
-	ExecutionID  uuid.NullUUID
-	TestCaseID   uuid.NullUUID
-	StepIndex    pgtype.Int4
-	FailureClass FailureClass
-	RootCause    string
-	Confidence   float64
-	SuggestedFix string
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID                 uuid.UUID
+	OrgID              uuid.UUID
+	RunID              uuid.UUID
+	ExecutionID        uuid.NullUUID
+	TestCaseID         uuid.NullUUID
+	StepIndex          pgtype.Int4
+	FailureClass       FailureClass
+	Summary            string
+	RootCause          string
+	Confidence         float64
+	SuggestedFix       string
+	AnalyzedByProvider NullAgentProvider
+	AnalyzedByVersion  string
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 }
 
 type FindingEvidence struct {

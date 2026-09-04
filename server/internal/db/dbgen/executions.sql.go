@@ -218,6 +218,95 @@ func (q *Queries) GetExecutionByRunAndCase(ctx context.Context, arg GetExecution
 	return i, err
 }
 
+const listExecutionAssertions = `-- name: ListExecutionAssertions :many
+SELECT id, org_id, execution_id, assertion_index, type, status, expected, actual, message, created_at FROM execution_assertions
+WHERE org_id = $1 AND execution_id = $2
+ORDER BY assertion_index
+`
+
+type ListExecutionAssertionsParams struct {
+	OrgID       uuid.UUID
+	ExecutionID uuid.UUID
+}
+
+func (q *Queries) ListExecutionAssertions(ctx context.Context, arg ListExecutionAssertionsParams) ([]ExecutionAssertion, error) {
+	rows, err := q.db.Query(ctx, listExecutionAssertions, arg.OrgID, arg.ExecutionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExecutionAssertion{}
+	for rows.Next() {
+		var i ExecutionAssertion
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ExecutionID,
+			&i.AssertionIndex,
+			&i.Type,
+			&i.Status,
+			&i.Expected,
+			&i.Actual,
+			&i.Message,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExecutionAssertionsForRun = `-- name: ListExecutionAssertionsForRun :many
+SELECT a.id, a.org_id, a.execution_id, a.assertion_index, a.type, a.status, a.expected, a.actual, a.message, a.created_at
+FROM execution_assertions a
+JOIN executions e ON e.id = a.execution_id AND e.org_id = a.org_id
+WHERE a.org_id = $1 AND e.run_id = $2
+ORDER BY a.execution_id, a.assertion_index
+`
+
+type ListExecutionAssertionsForRunParams struct {
+	OrgID uuid.UUID
+	RunID uuid.UUID
+}
+
+// Every assertion of a run in one query. The analyst needs the failing
+// assertion's expected/actual pair to classify a failure at all, and fetching
+// them per execution would be the N+1 this replaces.
+func (q *Queries) ListExecutionAssertionsForRun(ctx context.Context, arg ListExecutionAssertionsForRunParams) ([]ExecutionAssertion, error) {
+	rows, err := q.db.Query(ctx, listExecutionAssertionsForRun, arg.OrgID, arg.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExecutionAssertion{}
+	for rows.Next() {
+		var i ExecutionAssertion
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ExecutionID,
+			&i.AssertionIndex,
+			&i.Type,
+			&i.Status,
+			&i.Expected,
+			&i.Actual,
+			&i.Message,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listExecutionSteps = `-- name: ListExecutionSteps :many
 SELECT id, org_id, execution_id, step_index, action, target, result, unstable, error_message, duration_ms, started_at, finished_at, created_at FROM execution_steps
 WHERE org_id = $1 AND execution_id = $2
@@ -449,6 +538,57 @@ func (q *Queries) MarkExecutionRunning(ctx context.Context, arg MarkExecutionRun
 		&i.FinishedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertExecutionAssertion = `-- name: UpsertExecutionAssertion :one
+INSERT INTO execution_assertions (org_id, execution_id, assertion_index, type,
+                                  status, expected, actual, message)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (execution_id, assertion_index) DO UPDATE
+SET type = EXCLUDED.type,
+    status = EXCLUDED.status,
+    expected = EXCLUDED.expected,
+    actual = EXCLUDED.actual,
+    message = EXCLUDED.message
+RETURNING id, org_id, execution_id, assertion_index, type, status, expected, actual, message, created_at
+`
+
+type UpsertExecutionAssertionParams struct {
+	OrgID          uuid.UUID
+	ExecutionID    uuid.UUID
+	AssertionIndex int32
+	Type           string
+	Status         ExecutionResult
+	Expected       string
+	Actual         string
+	Message        string
+}
+
+func (q *Queries) UpsertExecutionAssertion(ctx context.Context, arg UpsertExecutionAssertionParams) (ExecutionAssertion, error) {
+	row := q.db.QueryRow(ctx, upsertExecutionAssertion,
+		arg.OrgID,
+		arg.ExecutionID,
+		arg.AssertionIndex,
+		arg.Type,
+		arg.Status,
+		arg.Expected,
+		arg.Actual,
+		arg.Message,
+	)
+	var i ExecutionAssertion
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.ExecutionID,
+		&i.AssertionIndex,
+		&i.Type,
+		&i.Status,
+		&i.Expected,
+		&i.Actual,
+		&i.Message,
+		&i.CreatedAt,
 	)
 	return i, err
 }

@@ -86,3 +86,30 @@ FROM execution_steps s
 JOIN executions e ON e.id = s.execution_id AND e.org_id = s.org_id
 WHERE s.org_id = $1 AND e.run_id = $2
 ORDER BY s.execution_id, s.step_index;
+
+-- name: UpsertExecutionAssertion :one
+INSERT INTO execution_assertions (org_id, execution_id, assertion_index, type,
+                                  status, expected, actual, message)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (execution_id, assertion_index) DO UPDATE
+SET type = EXCLUDED.type,
+    status = EXCLUDED.status,
+    expected = EXCLUDED.expected,
+    actual = EXCLUDED.actual,
+    message = EXCLUDED.message
+RETURNING *;
+
+-- name: ListExecutionAssertions :many
+SELECT * FROM execution_assertions
+WHERE org_id = $1 AND execution_id = $2
+ORDER BY assertion_index;
+
+-- Every assertion of a run in one query. The analyst needs the failing
+-- assertion's expected/actual pair to classify a failure at all, and fetching
+-- them per execution would be the N+1 this replaces.
+-- name: ListExecutionAssertionsForRun :many
+SELECT a.*
+FROM execution_assertions a
+JOIN executions e ON e.id = a.execution_id AND e.org_id = a.org_id
+WHERE a.org_id = $1 AND e.run_id = $2
+ORDER BY a.execution_id, a.assertion_index;
