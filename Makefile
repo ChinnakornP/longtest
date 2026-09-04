@@ -161,7 +161,7 @@ dev-server: ## Run the Go backend
 
 .PHONY: dev-daemon
 dev-daemon: ## Run the QA daemon
-	cd daemon && $(GO) run ./cmd/daemon
+	cd daemon && $(GO) run ./cmd/qa-daemon
 
 # ---------------------------------------------------------------------------
 # setup

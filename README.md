@@ -54,8 +54,11 @@ server/                   Go backend: REST, WebSocket, job queue    (T4)
   internal/db/            hand-written SQL + sqlc-generated query layer
   internal/{auth,org,project,runtime,run,testcase,report,artifact,realtime}/
   pkg/db/                 DSN handling, connection pool, migrator
-daemon/                   Go QA daemon, runs on the operator's box  (T5)
-  {browser,runtime,agent,discovery,workspace,artifacts}/
+daemon/                   Go QA daemon, runs on the operator's box  (T9)
+  cmd/qa-daemon/          pair / start / status / doctor
+  runtime/                control loop: WS client, run orchestration
+  {workspace,artifacts,browser,proc}/
+  agent/                  AI CLI detection; provider lands here     (T10)
   executor/               Node sidecar that owns Playwright         (T6)
 e2e/                      platform end-to-end tests + fixture app   (T13)
 docker/                   image definitions                         (T9/T12)
@@ -64,6 +67,23 @@ docs/adr/                 architecture decision records             (T3)
 
 Most directories are stage-1 placeholders; the task that fills each one is
 noted above and in the per-directory README.
+
+## The QA daemon
+
+`daemon/` runs on a machine inside the customer's network and is the only
+component that touches the application under test. It dials **out** to the
+backend over one WebSocket and accepts no inbound connections (ADR-002), which
+is what lets it test `localhost` and `staging.internal` without exposing them.
+
+```bash
+cd daemon && go run ./cmd/qa-daemon pair --code K7Q2-9FMR-3XT8 --server http://localhost:8080
+cd daemon && go run ./cmd/qa-daemon doctor      # what is missing, and how to fix it
+make dev-daemon                                  # start it
+```
+
+`daemon/README.md` covers the config file, the per-run workspace layout,
+retention, and what the daemon guarantees about reconnection, idempotency and
+cancellation.
 
 ## Database
 
