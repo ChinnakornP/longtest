@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "id": "TC-201",
+  "name": "Scroll to the footer",
+  "priority": "medium",
+  "category": "ui_behavior",
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/dashboard"
+    },
+    {
+      "action": "scroll",
+      "target": {
+        "ref": "dash.footer"
+      }
+    }
+  ],
+  "assertions": [
+    {
+      "type": "visible",
+      "target": {
+        "ref": "dash.footer"
+      }
+    }
+  ]
+}

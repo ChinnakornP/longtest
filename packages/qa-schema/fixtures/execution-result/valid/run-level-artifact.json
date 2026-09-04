@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "testCaseId": "TC-021",
+  "runId": "018f3a90-11a2-7000-8000-0123456789ab",
+  "result": "error",
+  "failureClass": "NETWORK_ERROR",
+  "message": "The target stopped answering midway through the run; the case never reached its first assertion.",
+  "steps": [{ "index": 0, "action": "navigate", "status": "error", "message": "net::ERR_CONNECTION_RESET" }],
+  "artifacts": [
+    {
+      "id": "shot-nav-failed",
+      "kind": "screenshot",
+      "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-021/nav-failed.png"
+    },
+    {
+      "id": "har-run",
+      "kind": "network",
+      "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/run.har",
+      "contentType": "application/json",
+      "sizeBytes": 1048576
+    }
+  ],
+  "startedAt": "2026-09-04T09:18:00Z",
+  "endedAt": "2026-09-04T09:18:31Z",
+  "durationMs": 31000
+}

@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "type": "run.assign",
+  "msgId": "018f3a92-0003-7000-8000-0123456789ab",
+  "runId": "018f3a90-11a2-7000-8000-0123456789ab",
+  "seq": 0,
+  "ts": "2026-09-04T09:15:00Z",
+  "payload": {
+    "runId": "018f3a90-11a2-7000-8000-0123456789ab",
+    "mode": "full",
+    "projectId": "018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b",
+    "baseUrl": "https://demo.example.test",
+    "agent": "claude",
+    "artifactUpload": {
+      "presignedPutBase": "https://minio.internal.example.test/qa-artifacts",
+      "keyPrefix": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/",
+      "expiresAt": "2026-09-04T11:15:00Z"
+    }
+  }
+}

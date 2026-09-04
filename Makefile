@@ -82,7 +82,7 @@ seed: .env ## Seed a dev database with one org, one owner and one project
 gen: gen-schema gen-sqlc ## Run every code generator
 
 .PHONY: gen-schema
-gen-schema: ## Generate Go + TS types from packages/qa-schema
+gen-schema: node_modules ## Generate Go + TS types from packages/qa-schema
 	$(PNPM) --filter @qa/schema run gen
 
 .PHONY: gen-sqlc

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "id": "TC-206",
+  "name": "Click with a stray selector field",
+  "priority": "medium",
+  "category": "functional",
+  "steps": [
+    {
+      "action": "click",
+      "target": {
+        "ref": "emp.btn.add"
+      },
+      "selector": "#add"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "visible",
+      "target": {
+        "ref": "emp.form.root"
+      }
+    }
+  ]
+}

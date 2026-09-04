@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "testCaseId": "TC-003",
+  "stepIndex": 2,
+  "failureClass": "FLAKY",
+  "rootCause": "It passes on a retry.",
+  "confidence": 0.4,
+  "evidence": ["net-log"]
+}

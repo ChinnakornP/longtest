@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "testCaseId": "TC-001",
+  "result": "flaky",
+  "steps": [],
+  "artifacts": [],
+  "startedAt": "2026-09-04T09:15:02Z",
+  "endedAt": "2026-09-04T09:15:09Z"
+}

@@ -1,0 +1,28 @@
+{
+  "v": 1,
+  "type": "hello",
+  "msgId": "018f3a92-0001-7000-8000-0123456789ab",
+  "seq": 0,
+  "ts": "2026-09-04T09:14:00Z",
+  "payload": {
+    "runtimeId": "018f3a8d-9c1a-7111-a222-0123456789ab",
+    "version": "0.3.1",
+    "hostname": "qa-macbook",
+    "os": "darwin",
+    "browsers": [
+      "chromium"
+    ],
+    "agents": [
+      {
+        "name": "claude",
+        "version": "2.1.0",
+        "ok": true
+      },
+      {
+        "name": "opencode",
+        "ok": false,
+        "error": "not on PATH"
+      }
+    ]
+  }
+}

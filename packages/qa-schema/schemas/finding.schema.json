@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa.local/schema/finding/1",
+  "x-contract-version": "1.0.0",
+  "title": "Finding",
+  "description": "Contract F. The Failure Analyst's verdict on one failed execution. Every failure gets a class: '23 tests failed' with no classification is the outcome this schema exists to prevent.",
+  "$ref": "#/$defs/Finding",
+  "$defs": {
+    "Finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "testCaseId", "stepIndex", "failureClass", "rootCause", "confidence", "evidence"],
+      "properties": {
+        "version": { "const": 1 },
+        "testCaseId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+        "executionId": { "type": "string", "format": "uuid" },
+        "stepIndex": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Which step the analyst blames. null when the failure is not attributable to a single step."
+        },
+        "failureClass": { "$ref": "#/$defs/FailureClass" },
+        "summary": { "type": "string", "maxLength": 500 },
+        "rootCause": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "The analyst's own confidence. Shown to the user; never used to silently drop a finding."
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": { "$ref": "https://qa.local/schema/execution-result/1#/$defs/ArtifactId" },
+          "description": "Artifact ids from the execution result. A finding with no evidence is a guess, so at least one is required."
+        },
+        "suggestedFix": { "type": "string", "maxLength": 8000 },
+        "analyzedBy": { "$ref": "#/$defs/AnalyzedBy" }
+      }
+    },
+
+    "FailureClass": {
+      "enum": [
+        "PRODUCT_BUG",
+        "TEST_BUG",
+        "ENVIRONMENT_ERROR",
+        "NETWORK_ERROR",
+        "AUTHENTICATION_ERROR",
+        "TIMEOUT",
+        "UNKNOWN"
+      ],
+      "description": "Frozen at v1. UNKNOWN is the honest answer; a consumer that meets a class it does not recognise must fail loudly rather than bucket it as UNKNOWN."
+    },
+
+    "AnalyzedBy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider"],
+      "properties": {
+        "provider": { "enum": ["claude", "opencode", "antigravity"] },
+        "version": { "type": "string", "maxLength": 64 }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "testCaseId": "TC-014",
+  "stepIndex": null,
+  "failureClass": "UNKNOWN",
+  "summary": "No single step explains the failure",
+  "rootCause": "The run ended with the browser on the right page and no console error, yet the success toast never appeared. Nothing in the evidence distinguishes a slow backend from a missing render.",
+  "confidence": 0.32,
+  "evidence": ["trace-main"]
+}

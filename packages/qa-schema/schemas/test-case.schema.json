@@ -1,0 +1,439 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa.local/schema/test-case/1",
+  "x-contract-version": "1.0.0",
+  "title": "Test case",
+  "description": "Contract A. Produced by the Test Planner agent, consumed by the Node executor. A test case is data, never code: every step and assertion has to be expressible here or the executor rejects the case.",
+  "$ref": "#/$defs/TestCase",
+  "$defs": {
+    "TestCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "id", "name", "priority", "category", "steps", "assertions"],
+      "properties": {
+        "version": {
+          "const": 1,
+          "description": "Which contract wrote this case. A test case outlives the run that produced it — it is stored as jsonb and replayed as regression — so the row has to say what it is without the reader guessing from its shape."
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "description": "Stable identifier the planner assigns, e.g. TC-001. Reused across runs so results can be compared run over run."
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 4000 },
+        "priority": { "enum": ["critical", "high", "medium", "low"] },
+        "category": {
+          "enum": ["functional", "validation", "navigation", "ui_behavior", "error_handling"]
+        },
+        "status": {
+          "enum": ["draft", "approved", "archived"],
+          "description": "Review state. Absent means draft; only an approved case is reused as regression."
+        },
+        "preconditions": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/Precondition" }
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/Step" }
+        },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/Assertion" }
+        }
+      }
+    },
+
+    "Precondition": {
+      "type": "string",
+      "pattern": "^fixture:[a-z][a-z0-9_]{0,63}$",
+      "description": "A named fixture the runtime knows how to establish, e.g. fixture:logged_in_as_admin. Free prose is rejected on purpose: a precondition an executor cannot establish is not a precondition, and this is also what keeps target-app credentials out of AI-authored JSON."
+    },
+
+    "ElementRef": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*(\\.[A-Za-z0-9][A-Za-z0-9_-]*)*$",
+      "description": "Reference into application-map@1 elements[].ref."
+    },
+
+    "TargetByRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref"],
+      "properties": { "ref": { "$ref": "#/$defs/ElementRef" } },
+      "description": "The contract form: point at an element the application map already named."
+    },
+
+    "TargetByLocator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locator", "unstable"],
+      "properties": {
+        "locator": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "unstable": { "const": true }
+      },
+      "description": "Escape hatch for a selector the planner invented. unstable must be true: a run that used one is reportable as non-deterministic rather than quietly equivalent."
+    },
+
+    "Target": {
+      "description": "How a step or assertion points at an element.",
+      "oneOf": [{ "$ref": "#/$defs/TargetByRef" }, { "$ref": "#/$defs/TargetByLocator" }]
+    },
+
+    "TimeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
+
+    "StepAction": {
+      "enum": [
+        "navigate",
+        "click",
+        "fill",
+        "select",
+        "check",
+        "hover",
+        "press",
+        "waitFor",
+        "screenshot"
+      ],
+      "description": "Frozen at v1. Adding a member is a new minor version; an executor that meets an action it does not know must fail the step, never skip it."
+    },
+
+    "Step": {
+      "type": "object",
+      "required": ["action"],
+      "x-codegen": {
+        "union": {
+          "discriminator": "action",
+          "variants": {
+            "navigate": "NavigateStep",
+            "click": "ClickStep",
+            "fill": "FillStep",
+            "select": "SelectStep",
+            "check": "CheckStep",
+            "hover": "HoverStep",
+            "press": "PressStep",
+            "waitFor": "WaitForStep",
+            "screenshot": "ScreenshotStep"
+          }
+        }
+      },
+      "properties": {
+        "action": { "$ref": "#/$defs/StepAction" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["action"], "properties": { "action": { "const": "navigate" } } },
+          "then": { "$ref": "#/$defs/NavigateStep" }
+        },
+        {
+          "if": { "required": ["action"], "properties": { "action": { "const": "click" } } },
+          "then": { "$ref": "#/$defs/ClickStep" }
+        },
+        {
+          "if": { "required": ["action"], "properties": { "action": { "const": "fill" } } },
+          "then": { "$ref": "#/$defs/FillStep" }
+        },
+        {
+          "if": { "required": ["action"], "properties": { "action": { "const": "select" } } },
+          "then": { "$ref": "#/$defs/SelectStep" }
+        },
+        {
+          "if": { "required": ["action"], "properties": { "action": { "const": "check" } } },
+          "then": { "$ref": "#/$defs/CheckStep" }
+        },
+        {
+          "if": { "required": ["action"], "properties": { "action": { "const": "hover" } } },
+          "then": { "$ref": "#/$defs/HoverStep" }
+        },
+        {
+          "if": { "required": ["action"], "properties": { "action": { "const": "press" } } },
+          "then": { "$ref": "#/$defs/PressStep" }
+        },
+        {
+          "if": { "required": ["action"], "properties": { "action": { "const": "waitFor" } } },
+          "then": { "$ref": "#/$defs/WaitForStep" }
+        },
+        {
+          "if": { "required": ["action"], "properties": { "action": { "const": "screenshot" } } },
+          "then": { "$ref": "#/$defs/ScreenshotStep" }
+        }
+      ]
+    },
+
+    "NavigateStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "url"],
+      "properties": {
+        "action": { "const": "navigate" },
+        "description": { "type": "string", "maxLength": 500 },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "^(/[^\\s]*|https?://[^\\s]+)$",
+          "description": "Absolute http(s) URL or a path relative to the project baseUrl."
+        },
+        "waitUntil": { "enum": ["load", "domcontentloaded", "networkidle"] },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "ClickStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "target"],
+      "properties": {
+        "action": { "const": "click" },
+        "description": { "type": "string", "maxLength": 500 },
+        "target": { "$ref": "#/$defs/Target" },
+        "button": { "enum": ["left", "right", "middle"] },
+        "clickCount": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "FillStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "target", "value"],
+      "properties": {
+        "action": { "const": "fill" },
+        "description": { "type": "string", "maxLength": 500 },
+        "target": { "$ref": "#/$defs/Target" },
+        "value": { "type": "string", "maxLength": 4096 },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "SelectStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "target", "value"],
+      "properties": {
+        "action": { "const": "select" },
+        "description": { "type": "string", "maxLength": 500 },
+        "target": { "$ref": "#/$defs/Target" },
+        "value": { "type": "string", "maxLength": 1024 },
+        "by": { "enum": ["value", "label", "index"] },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "CheckStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "target"],
+      "properties": {
+        "action": { "const": "check" },
+        "description": { "type": "string", "maxLength": 500 },
+        "target": { "$ref": "#/$defs/Target" },
+        "checked": { "type": "boolean", "description": "Absent means true." },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "HoverStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "target"],
+      "properties": {
+        "action": { "const": "hover" },
+        "description": { "type": "string", "maxLength": 500 },
+        "target": { "$ref": "#/$defs/Target" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "PressStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "key"],
+      "properties": {
+        "action": { "const": "press" },
+        "description": { "type": "string", "maxLength": 500 },
+        "target": { "$ref": "#/$defs/Target" },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Playwright key syntax, e.g. Enter or Control+A."
+        },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "WaitForStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "target", "state"],
+      "properties": {
+        "action": { "const": "waitFor" },
+        "description": { "type": "string", "maxLength": 500 },
+        "target": { "$ref": "#/$defs/Target" },
+        "state": { "enum": ["visible", "hidden", "attached", "detached"] },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "ScreenshotStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "const": "screenshot" },
+        "description": { "type": "string", "maxLength": 500 },
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+        "fullPage": { "type": "boolean" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+
+    "AssertionType": {
+      "enum": [
+        "visible",
+        "hidden",
+        "textEquals",
+        "textContains",
+        "urlMatches",
+        "elementCount",
+        "httpStatusNot",
+        "noConsoleError"
+      ],
+      "description": "Frozen at v1. Same rule as steps: an unknown assertion type fails the case, it is never skipped."
+    },
+
+    "Assertion": {
+      "type": "object",
+      "required": ["type"],
+      "x-codegen": {
+        "union": {
+          "discriminator": "type",
+          "variants": {
+            "visible": "TargetAssertion",
+            "hidden": "TargetAssertion",
+            "textEquals": "TextAssertion",
+            "textContains": "TextAssertion",
+            "urlMatches": "UrlMatchesAssertion",
+            "elementCount": "ElementCountAssertion",
+            "httpStatusNot": "HttpStatusNotAssertion",
+            "noConsoleError": "NoConsoleErrorAssertion"
+          }
+        }
+      },
+      "properties": {
+        "type": { "$ref": "#/$defs/AssertionType" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "visible" } } },
+          "then": { "$ref": "#/$defs/TargetAssertion" }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "hidden" } } },
+          "then": { "$ref": "#/$defs/TargetAssertion" }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "textEquals" } } },
+          "then": { "$ref": "#/$defs/TextAssertion" }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "textContains" } } },
+          "then": { "$ref": "#/$defs/TextAssertion" }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "urlMatches" } } },
+          "then": { "$ref": "#/$defs/UrlMatchesAssertion" }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "elementCount" } } },
+          "then": { "$ref": "#/$defs/ElementCountAssertion" }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "httpStatusNot" } } },
+          "then": { "$ref": "#/$defs/HttpStatusNotAssertion" }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "noConsoleError" } } },
+          "then": { "$ref": "#/$defs/NoConsoleErrorAssertion" }
+        }
+      ]
+    },
+
+    "TargetAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "target"],
+      "properties": {
+        "type": { "enum": ["visible", "hidden"] },
+        "message": { "type": "string", "maxLength": 500 },
+        "target": { "$ref": "#/$defs/Target" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "TextAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "target", "value"],
+      "properties": {
+        "type": { "enum": ["textEquals", "textContains"] },
+        "message": { "type": "string", "maxLength": 500 },
+        "target": { "$ref": "#/$defs/Target" },
+        "value": { "type": "string", "maxLength": 4096 },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "UrlMatchesAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value"],
+      "properties": {
+        "type": { "const": "urlMatches" },
+        "message": { "type": "string", "maxLength": 500 },
+        "value": { "type": "string", "format": "regex", "maxLength": 512 },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "ElementCountAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "target", "value"],
+      "properties": {
+        "type": { "const": "elementCount" },
+        "message": { "type": "string", "maxLength": 500 },
+        "target": { "$ref": "#/$defs/Target" },
+        "value": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "operator": { "enum": ["eq", "gte", "lte"], "description": "Absent means eq." },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" }
+      }
+    },
+    "HttpStatusNotAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value"],
+      "properties": {
+        "type": { "const": "httpStatusNot" },
+        "message": { "type": "string", "maxLength": 500 },
+        "value": { "type": "integer", "minimum": 100, "maximum": 599 }
+      }
+    },
+    "NoConsoleErrorAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "noConsoleError" },
+        "message": { "type": "string", "maxLength": 500 },
+        "ignorePatterns": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "type": "string", "format": "regex", "maxLength": 512 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,490 @@
+{
+  "application-map/valid/employees-app.json": {
+    "schemaId": "application-map@1",
+    "valid": true,
+    "errors": []
+  },
+  "application-map/valid/single-page-no-workflows.json": {
+    "schemaId": "application-map@1",
+    "valid": true,
+    "errors": []
+  },
+  "application-map/valid/unlabelled-elements.json": {
+    "schemaId": "application-map@1",
+    "valid": true,
+    "errors": []
+  },
+  "application-map/invalid/element-without-last-seen-run.json": {
+    "schemaId": "application-map@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/pages/0/elements/0",
+        "keyword": "required",
+        "message": "missing required property \"lastSeenRunId\""
+      }
+    ]
+  },
+  "application-map/invalid/element-without-locators.json": {
+    "schemaId": "application-map@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/pages/0/elements/0/locators",
+        "keyword": "minItems",
+        "message": "0 items is below the minimum of 1"
+      }
+    ]
+  },
+  "application-map/invalid/page-path-is-absolute-url.json": {
+    "schemaId": "application-map@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/pages/0/path",
+        "keyword": "pattern",
+        "message": "\"https://demo.example.test/employees\" does not match \"^/[^\\\\s]*$\""
+      }
+    ]
+  },
+  "application-map/invalid/role-locator-without-name.json": {
+    "schemaId": "application-map@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/pages/0/elements/0/locators/0",
+        "keyword": "required",
+        "message": "missing required property \"name\""
+      }
+    ]
+  },
+  "application-map/invalid/unknown-element-type.json": {
+    "schemaId": "application-map@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/pages/0/elements/0/type",
+        "keyword": "enum",
+        "message": "\"datagrid\" is not one of: \"button\", \"link\", \"input\", \"textarea\", \"select\", \"checkbox\", \"radio\", \"form\", \"table\", \"row\", \"cell\", \"text\", \"image\", \"dialog\", \"tab\", \"menu\", \"toast\", \"other\""
+      }
+    ]
+  },
+  "daemon-envelope/valid/heartbeat.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": true,
+    "errors": []
+  },
+  "daemon-envelope/valid/hello.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": true,
+    "errors": []
+  },
+  "daemon-envelope/valid/run-assign.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": true,
+    "errors": []
+  },
+  "daemon-envelope/valid/run-cancel.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": true,
+    "errors": []
+  },
+  "daemon-envelope/valid/run-event.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": true,
+    "errors": []
+  },
+  "daemon-envelope/valid/run-result.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": true,
+    "errors": []
+  },
+  "daemon-envelope/invalid/event-code-is-prose.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/payload/code",
+        "keyword": "pattern",
+        "message": "\"Retrying the step because the button was not ready\" does not match \"^[a-z][a-z0-9_]{0,63}$\""
+      }
+    ]
+  },
+  "daemon-envelope/invalid/hello-scoped-to-a-run.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/runId",
+        "keyword": "type",
+        "message": "expected null, got string"
+      }
+    ]
+  },
+  "daemon-envelope/invalid/run-event-without-run-id.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "",
+        "keyword": "required",
+        "message": "missing required property \"runId\""
+      }
+    ]
+  },
+  "daemon-envelope/invalid/run-result-with-bad-finding.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/payload/findings/0/confidence",
+        "keyword": "maximum",
+        "message": "1.5 exceeds the maximum of 1"
+      }
+    ]
+  },
+  "daemon-envelope/invalid/unknown-frame-type.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/type",
+        "keyword": "enum",
+        "message": "\"run.pause\" is not one of: \"hello\", \"heartbeat\", \"run.assign\", \"run.cancel\", \"run.event\", \"run.result\""
+      }
+    ]
+  },
+  "daemon-envelope/invalid/upload-prefix-not-scoped-to-org.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/payload/artifactUpload/keyPrefix",
+        "keyword": "pattern",
+        "message": "\"runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/\" does not match \"^orgs/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/$\""
+      }
+    ]
+  },
+  "daemon-envelope/invalid/upload-prefix-traversal.json": {
+    "schemaId": "daemon-envelope@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/payload/artifactUpload/keyPrefix",
+        "keyword": "pattern",
+        "message": "\"orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/../\" does not match \"^orgs/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/$\""
+      }
+    ]
+  },
+  "execution-result/valid/failing-edit-employee.json": {
+    "schemaId": "execution-result@1",
+    "valid": true,
+    "errors": []
+  },
+  "execution-result/valid/passing-create-employee.json": {
+    "schemaId": "execution-result@1",
+    "valid": true,
+    "errors": []
+  },
+  "execution-result/valid/run-level-artifact.json": {
+    "schemaId": "execution-result@1",
+    "valid": true,
+    "errors": []
+  },
+  "execution-result/valid/skipped-missing-fixture.json": {
+    "schemaId": "execution-result@1",
+    "valid": true,
+    "errors": []
+  },
+  "execution-result/invalid/artifact-key-has-an-extra-segment.json": {
+    "schemaId": "execution-result@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/artifacts/0/key",
+        "keyword": "pattern",
+        "message": "\"orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-001/attempt-2/final.png\" does not match \"^orgs/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/([A-Za-z0-9][A-Za-z0-9._-]{0,99}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$\""
+      }
+    ]
+  },
+  "execution-result/invalid/artifact-key-outside-org-prefix.json": {
+    "schemaId": "execution-result@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/artifacts/0/key",
+        "keyword": "pattern",
+        "message": "\"runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-001/final.png\" does not match \"^orgs/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/([A-Za-z0-9][A-Za-z0-9._-]{0,99}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$\""
+      }
+    ]
+  },
+  "execution-result/invalid/artifact-key-traversal.json": {
+    "schemaId": "execution-result@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/artifacts/0/key",
+        "keyword": "pattern",
+        "message": "\"orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/../evil.png\" does not match \"^orgs/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/([A-Za-z0-9][A-Za-z0-9._-]{0,99}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$\""
+      },
+      {
+        "instancePath": "/artifacts/1/key",
+        "keyword": "pattern",
+        "message": "\"orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/../TC-001/evil.png\" does not match \"^orgs/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/([A-Za-z0-9][A-Za-z0-9._-]{0,99}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$\""
+      },
+      {
+        "instancePath": "/artifacts/2/key",
+        "keyword": "pattern",
+        "message": "\"orgs/../runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-001/evil.png\" does not match \"^orgs/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/([A-Za-z0-9][A-Za-z0-9._-]{0,99}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$\""
+      },
+      {
+        "instancePath": "/artifacts/3/key",
+        "keyword": "pattern",
+        "message": "\"orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/.hidden.png\" does not match \"^orgs/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/([A-Za-z0-9][A-Za-z0-9._-]{0,99}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$\""
+      }
+    ]
+  },
+  "execution-result/invalid/negative-step-index.json": {
+    "schemaId": "execution-result@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/steps/0/index",
+        "keyword": "minimum",
+        "message": "-1 is below the minimum of 0"
+      }
+    ]
+  },
+  "execution-result/invalid/step-action-not-in-vocabulary.json": {
+    "schemaId": "execution-result@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/steps/0/action",
+        "keyword": "enum",
+        "message": "\"scrollIntoView\" is not one of: \"navigate\", \"click\", \"fill\", \"select\", \"check\", \"hover\", \"press\", \"waitFor\", \"screenshot\""
+      }
+    ]
+  },
+  "execution-result/invalid/timestamps-not-rfc3339.json": {
+    "schemaId": "execution-result@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/startedAt",
+        "keyword": "format",
+        "message": "\"2026-09-04 09:15:02\" is not a valid date-time"
+      }
+    ]
+  },
+  "execution-result/invalid/unknown-result.json": {
+    "schemaId": "execution-result@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/result",
+        "keyword": "enum",
+        "message": "\"flaky\" is not one of: \"pass\", \"fail\", \"skipped\", \"error\""
+      }
+    ]
+  },
+  "finding/valid/product-bug-500.json": {
+    "schemaId": "finding@1",
+    "valid": true,
+    "errors": []
+  },
+  "finding/valid/test-bug-stale-ref.json": {
+    "schemaId": "finding@1",
+    "valid": true,
+    "errors": []
+  },
+  "finding/valid/unknown-whole-case.json": {
+    "schemaId": "finding@1",
+    "valid": true,
+    "errors": []
+  },
+  "finding/invalid/confidence-out-of-range.json": {
+    "schemaId": "finding@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/confidence",
+        "keyword": "maximum",
+        "message": "1.5 exceeds the maximum of 1"
+      }
+    ]
+  },
+  "finding/invalid/missing-root-cause.json": {
+    "schemaId": "finding@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "",
+        "keyword": "required",
+        "message": "missing required property \"rootCause\""
+      }
+    ]
+  },
+  "finding/invalid/no-evidence.json": {
+    "schemaId": "finding@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/evidence",
+        "keyword": "minItems",
+        "message": "0 items is below the minimum of 1"
+      }
+    ]
+  },
+  "finding/invalid/unknown-failure-class.json": {
+    "schemaId": "finding@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/failureClass",
+        "keyword": "enum",
+        "message": "\"FLAKY\" is not one of: \"PRODUCT_BUG\", \"TEST_BUG\", \"ENVIRONMENT_ERROR\", \"NETWORK_ERROR\", \"AUTHENTICATION_ERROR\", \"TIMEOUT\", \"UNKNOWN\""
+      }
+    ]
+  },
+  "test-case/valid/create-employee.json": {
+    "schemaId": "test-case@1",
+    "valid": true,
+    "errors": []
+  },
+  "test-case/valid/login-validation.json": {
+    "schemaId": "test-case@1",
+    "valid": true,
+    "errors": []
+  },
+  "test-case/valid/unstable-locator.json": {
+    "schemaId": "test-case@1",
+    "valid": true,
+    "errors": []
+  },
+  "test-case/invalid/fill-without-value.json": {
+    "schemaId": "test-case@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/steps/0",
+        "keyword": "required",
+        "message": "missing required property \"value\""
+      }
+    ]
+  },
+  "test-case/invalid/precondition-carries-credentials.json": {
+    "schemaId": "test-case@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/preconditions/0",
+        "keyword": "pattern",
+        "message": "\"log in as admin@example.test with password hunter2\" does not match \"^fixture:[a-z][a-z0-9_]{0,63}$\""
+      }
+    ]
+  },
+  "test-case/invalid/raw-locator-not-flagged.json": {
+    "schemaId": "test-case@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/steps/1/target",
+        "keyword": "oneOf",
+        "message": "does not match any of the 2 allowed shapes: [0] /steps/1/target: missing required property \"ref\"; [1] /steps/1/target: missing required property \"unstable\""
+      }
+    ]
+  },
+  "test-case/invalid/step-with-extra-property.json": {
+    "schemaId": "test-case@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/steps/0/selector",
+        "keyword": "additionalProperties",
+        "message": "property \"selector\" is not allowed here"
+      }
+    ]
+  },
+  "test-case/invalid/unknown-action.json": {
+    "schemaId": "test-case@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/steps/1/action",
+        "keyword": "enum",
+        "message": "\"scroll\" is not one of: \"navigate\", \"click\", \"fill\", \"select\", \"check\", \"hover\", \"press\", \"waitFor\", \"screenshot\""
+      }
+    ]
+  },
+  "test-case/invalid/unknown-assertion-type.json": {
+    "schemaId": "test-case@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/assertions/0/type",
+        "keyword": "enum",
+        "message": "\"screenshotMatches\" is not one of: \"visible\", \"hidden\", \"textEquals\", \"textContains\", \"urlMatches\", \"elementCount\", \"httpStatusNot\", \"noConsoleError\""
+      }
+    ]
+  },
+  "test-plan/valid/employees-plan.json": {
+    "schemaId": "test-plan@1",
+    "valid": true,
+    "errors": []
+  },
+  "test-plan/valid/minimal-plan.json": {
+    "schemaId": "test-plan@1",
+    "valid": true,
+    "errors": []
+  },
+  "test-plan/valid/single-case-plan.json": {
+    "schemaId": "test-plan@1",
+    "valid": true,
+    "errors": []
+  },
+  "test-plan/invalid/missing-coverage-notes.json": {
+    "schemaId": "test-plan@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "",
+        "keyword": "required",
+        "message": "missing required property \"coverageNotes\""
+      }
+    ]
+  },
+  "test-plan/invalid/nested-test-case-is-invalid.json": {
+    "schemaId": "test-plan@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/testCases/0/steps/1/action",
+        "keyword": "enum",
+        "message": "\"scroll\" is not one of: \"navigate\", \"click\", \"fill\", \"select\", \"check\", \"hover\", \"press\", \"waitFor\", \"screenshot\""
+      }
+    ]
+  },
+  "test-plan/invalid/no-test-cases.json": {
+    "schemaId": "test-plan@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/testCases",
+        "keyword": "minItems",
+        "message": "0 items is below the minimum of 1"
+      }
+    ]
+  },
+  "test-plan/invalid/wrong-version.json": {
+    "schemaId": "test-plan@1",
+    "valid": false,
+    "errors": [
+      {
+        "instancePath": "/version",
+        "keyword": "const",
+        "message": "expected 1, got 2"
+      }
+    ]
+  }
+}

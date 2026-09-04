@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "testCaseId": "TC-001",
+  "result": "pass",
+  "steps": [],
+  "artifacts": [
+    {
+      "id": "shot-final",
+      "kind": "screenshot",
+      "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-001/attempt-2/final.png"
+    }
+  ],
+  "startedAt": "2026-09-04T09:15:02Z",
+  "endedAt": "2026-09-04T09:15:09Z"
+}

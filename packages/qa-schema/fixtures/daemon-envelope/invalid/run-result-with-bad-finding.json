@@ -1,0 +1,395 @@
+{
+  "v": 1,
+  "type": "run.result",
+  "msgId": "018f3a92-000b-7000-8000-0123456789ab",
+  "runId": "018f3a90-11a2-7000-8000-0123456789ab",
+  "seq": 128,
+  "ts": "2026-09-04T09:22:00Z",
+  "payload": {
+    "status": "completed",
+    "appMap": {
+      "version": 1,
+      "baseUrl": "https://demo.example.test",
+      "projectId": "018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b",
+      "generatedAtRunId": "018f3a90-11a2-7000-8000-0123456789ab",
+      "pages": [
+        {
+          "id": "page.login",
+          "path": "/login",
+          "title": "Sign in",
+          "authRequired": false,
+          "elements": [
+            {
+              "ref": "login.input.email",
+              "type": "input",
+              "label": "Email",
+              "locators": [
+                {
+                  "kind": "testId",
+                  "value": "login-email"
+                },
+                {
+                  "kind": "label",
+                  "value": "Email"
+                }
+              ],
+              "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+            },
+            {
+              "ref": "login.btn.submit",
+              "type": "button",
+              "label": "Sign in",
+              "locators": [
+                {
+                  "kind": "role",
+                  "value": "button",
+                  "name": "Sign in"
+                }
+              ],
+              "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+            }
+          ]
+        },
+        {
+          "id": "page.employees",
+          "path": "/employees",
+          "title": "Employees",
+          "authRequired": true,
+          "elements": [
+            {
+              "ref": "emp.btn.add",
+              "type": "button",
+              "label": "Add Employee",
+              "locators": [
+                {
+                  "kind": "testId",
+                  "value": "add-emp"
+                },
+                {
+                  "kind": "role",
+                  "value": "button",
+                  "name": "Add Employee"
+                }
+              ],
+              "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+            },
+            {
+              "ref": "emp.table",
+              "type": "table",
+              "locators": [
+                {
+                  "kind": "testId",
+                  "value": "employee-table"
+                }
+              ],
+              "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+            }
+          ]
+        }
+      ],
+      "workflows": [
+        {
+          "id": "wf.create_employee",
+          "name": "Create employee",
+          "path": [
+            "page.employees",
+            "emp.btn.add",
+            "page.employees.create",
+            "emp.btn.save"
+          ],
+          "expectedOutcome": "a new row appears in the employee list",
+          "authRequired": true
+        }
+      ]
+    },
+    "testPlan": {
+      "version": 1,
+      "projectId": "018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b",
+      "sourceAppMapRunId": "018f3a90-11a2-7000-8000-0123456789ab",
+      "testCases": [
+        {
+          "version": 1,
+          "id": "TC-001",
+          "name": "Create employee",
+          "priority": "critical",
+          "category": "functional",
+          "preconditions": [
+            "fixture:logged_in_as_admin"
+          ],
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/employees"
+            },
+            {
+              "action": "click",
+              "target": {
+                "ref": "emp.btn.add"
+              }
+            },
+            {
+              "action": "fill",
+              "target": {
+                "ref": "emp.form.firstName"
+              },
+              "value": "John"
+            },
+            {
+              "action": "click",
+              "target": {
+                "ref": "emp.btn.save"
+              }
+            },
+            {
+              "action": "waitFor",
+              "target": {
+                "ref": "emp.toast.success"
+              },
+              "state": "visible",
+              "timeoutMs": 5000
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "target": {
+                "ref": "emp.toast.success"
+              }
+            },
+            {
+              "type": "textContains",
+              "target": {
+                "ref": "emp.table"
+              },
+              "value": "John"
+            },
+            {
+              "type": "urlMatches",
+              "value": "^/employees/[0-9]+$"
+            },
+            {
+              "type": "httpStatusNot",
+              "value": 500
+            }
+          ]
+        },
+        {
+          "version": 1,
+          "id": "TC-014",
+          "name": "Login rejects a wrong password",
+          "description": "The failure path has to stay on /login and must not leak a stack trace to the console.",
+          "priority": "high",
+          "category": "validation",
+          "status": "approved",
+          "tags": [
+            "auth",
+            "negative"
+          ],
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/login",
+              "waitUntil": "domcontentloaded"
+            },
+            {
+              "action": "fill",
+              "target": {
+                "ref": "login.input.email"
+              },
+              "value": "admin@example.test"
+            },
+            {
+              "action": "fill",
+              "target": {
+                "ref": "login.input.password"
+              },
+              "value": "not-the-password"
+            },
+            {
+              "action": "press",
+              "target": {
+                "ref": "login.input.password"
+              },
+              "key": "Enter"
+            },
+            {
+              "action": "screenshot",
+              "name": "after-failed-login",
+              "fullPage": true
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "target": {
+                "ref": "login.error.banner"
+              }
+            },
+            {
+              "type": "urlMatches",
+              "value": "^/login"
+            },
+            {
+              "type": "noConsoleError",
+              "ignorePatterns": [
+                "favicon"
+              ]
+            }
+          ]
+        }
+      ],
+      "rationale": "The employee list is the only place in the map with a create/edit/delete workflow, so it carries most of the product risk. Login is covered on the negative path only: the positive path is already a precondition of every other case, so a regression there would fail the whole suite loudly.",
+      "coverageNotes": "Not covered: pagination beyond page 1 (the map found no pager), the bulk-import dialog (reachable only from a menu the crawler could not open) and anything behind /admin (the discovery run had no credentials for it)."
+    },
+    "executions": [
+      {
+        "version": 1,
+        "testCaseId": "TC-001",
+        "runId": "018f3a90-11a2-7000-8000-0123456789ab",
+        "attempt": 1,
+        "result": "pass",
+        "steps": [
+          {
+            "index": 0,
+            "action": "navigate",
+            "status": "pass",
+            "startedAt": "2026-09-04T09:15:02Z",
+            "endedAt": "2026-09-04T09:15:03.412Z",
+            "durationMs": 1412
+          },
+          {
+            "index": 1,
+            "action": "click",
+            "status": "pass",
+            "resolvedLocator": "getByTestId('add-emp')",
+            "unstableTarget": false,
+            "durationMs": 210
+          }
+        ],
+        "assertions": [
+          {
+            "index": 0,
+            "type": "visible",
+            "status": "pass"
+          },
+          {
+            "index": 1,
+            "type": "textContains",
+            "status": "pass",
+            "expected": "John",
+            "actual": "John Doe"
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "shot-final",
+            "kind": "screenshot",
+            "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-001/final.png",
+            "contentType": "image/png",
+            "sizeBytes": 84213
+          }
+        ],
+        "startedAt": "2026-09-04T09:15:02Z",
+        "endedAt": "2026-09-04T09:15:09Z",
+        "durationMs": 7000
+      },
+      {
+        "version": 1,
+        "testCaseId": "TC-003",
+        "runId": "018f3a90-11a2-7000-8000-0123456789ab",
+        "result": "fail",
+        "failureClass": "PRODUCT_BUG",
+        "message": "Assertion 0 failed: the employee name did not change after save.",
+        "steps": [
+          {
+            "index": 0,
+            "action": "navigate",
+            "status": "pass"
+          },
+          {
+            "index": 1,
+            "action": "fill",
+            "status": "pass",
+            "resolvedLocator": "#first-name",
+            "unstableTarget": true
+          },
+          {
+            "index": 2,
+            "action": "click",
+            "status": "pass"
+          }
+        ],
+        "assertions": [
+          {
+            "index": 0,
+            "type": "textEquals",
+            "status": "fail",
+            "expected": "John",
+            "actual": "James",
+            "message": "the row still shows the old value",
+            "artifactIds": [
+              "shot-after-save",
+              "net-log"
+            ]
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "shot-after-save",
+            "kind": "screenshot",
+            "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-003/after-save.png"
+          },
+          {
+            "id": "net-log",
+            "kind": "network",
+            "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-003/network.json",
+            "sha256": "3b1f2c4d5e6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e"
+          }
+        ],
+        "startedAt": "2026-09-04T09:16:00Z",
+        "endedAt": "2026-09-04T09:16:12Z"
+      }
+    ],
+    "findings": [
+      {
+        "version": 1,
+        "testCaseId": "TC-003",
+        "executionId": "018f3a91-4d5e-7abc-8def-0123456789ab",
+        "stepIndex": 2,
+        "failureClass": "PRODUCT_BUG",
+        "summary": "POST /api/employees returns 500 on save",
+        "rootCause": "The UI submitted the form correctly and the request carried every required field, but the backend answered 500 with an empty body. The row in the table is unchanged because the save never committed.",
+        "confidence": 1.5,
+        "evidence": [
+          "shot-after-save",
+          "net-log"
+        ],
+        "suggestedFix": "Check the employees create handler for an unhandled error on duplicate email; the request that failed reused an address already present in the list.",
+        "analyzedBy": {
+          "provider": "claude",
+          "version": "2.1.0"
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "shot-after-save",
+        "kind": "screenshot",
+        "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-003/after-save.png"
+      },
+      {
+        "id": "net-log",
+        "kind": "network",
+        "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-003/network.json",
+        "sha256": "3b1f2c4d5e6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e"
+      },
+      {
+        "id": "shot-final",
+        "kind": "screenshot",
+        "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-001/final.png",
+        "contentType": "image/png",
+        "sizeBytes": 84213
+      }
+    ]
+  }
+}

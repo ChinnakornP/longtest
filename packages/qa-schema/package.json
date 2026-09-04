@@ -5,17 +5,28 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "bin": {
+    "qa-schema": "./bin/qa-schema.mjs"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./schemas/*": "./schemas/*"
   },
+  "files": [
+    "bin",
+    "dist",
+    "schemas",
+    "src"
+  ],
   "scripts": {
     "gen": "node ./scripts/generate.mjs",
+    "gen:expectations": "node ./scripts/expectations.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
+    "typescript": "5.9.3",
     "vitest": "4.1.11"
   }
 }

@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "testCaseId": "TC-003",
+  "runId": "018f3a90-11a2-7000-8000-0123456789ab",
+  "result": "fail",
+  "failureClass": "PRODUCT_BUG",
+  "message": "Assertion 0 failed: the employee name did not change after save.",
+  "steps": [
+    {
+      "index": 0,
+      "action": "navigate",
+      "status": "pass"
+    },
+    {
+      "index": 1,
+      "action": "fill",
+      "status": "pass",
+      "resolvedLocator": "#first-name",
+      "unstableTarget": true
+    },
+    {
+      "index": 2,
+      "action": "click",
+      "status": "pass"
+    }
+  ],
+  "assertions": [
+    {
+      "index": 0,
+      "type": "textEquals",
+      "status": "fail",
+      "expected": "John",
+      "actual": "James",
+      "message": "the row still shows the old value",
+      "artifactIds": [
+        "shot-after-save",
+        "net-log"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "shot-after-save",
+      "kind": "screenshot",
+      "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-003/after-save.png"
+    },
+    {
+      "id": "net-log",
+      "kind": "network",
+      "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-003/network.json",
+      "sha256": "3b1f2c4d5e6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e"
+    }
+  ],
+  "startedAt": "2026-09-04T09:16:00Z",
+  "endedAt": "2026-09-04T09:16:12Z"
+}

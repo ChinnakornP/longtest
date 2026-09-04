@@ -1,20 +1,29 @@
 /**
- * Contract identifiers shared by every component.
+ * @qa/schema — the versioned wire contracts every component agrees on.
  *
- * The generated types land next to this file (`*.generated.ts`) once T1 wires
- * up `make gen`. The names below are frozen now so the backend, the daemon and
- * the executor can be written against them in parallel.
+ * Nothing in this repo may re-declare one of these shapes. If a payload crosses
+ * a component boundary, its type comes from here and it is validated here.
  */
+export {
+  CONTRACT_VERSIONS,
+  SCHEMA_IDS,
+  SCHEMA_URIS,
+  SchemaError,
+  UnknownSchemaError,
+  getSchemaDocument,
+  isSchemaId,
+  validate,
+  validateJson,
+  type SchemaId,
+} from './registry.js';
 
-export const SCHEMA_IDS = [
-  'test-case@1',
-  'application-map@1',
-  'finding@1',
-  'daemon-envelope@1',
-] as const;
+export {
+  assertSupported,
+  jsonType,
+  validateWith,
+  type Resolver,
+  type ValidationError,
+  type ValidationResult,
+} from './validator.js';
 
-export type SchemaId = (typeof SCHEMA_IDS)[number];
-
-export function isSchemaId(value: string): value is SchemaId {
-  return (SCHEMA_IDS as readonly string[]).includes(value);
-}
+export * from './types.generated.js';

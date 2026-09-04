@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "id": "TC-102",
+  "name": "Toggle the beta banner",
+  "priority": "low",
+  "category": "ui_behavior",
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "https://demo.example.test/settings"
+    },
+    {
+      "action": "hover",
+      "target": {
+        "locator": "#beta-banner .toggle",
+        "unstable": true
+      }
+    },
+    {
+      "action": "check",
+      "target": {
+        "ref": "settings.checkbox.beta"
+      },
+      "checked": true
+    },
+    {
+      "action": "select",
+      "target": {
+        "ref": "settings.select.theme"
+      },
+      "value": "dark",
+      "by": "value"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "elementCount",
+      "target": {
+        "ref": "settings.list.row"
+      },
+      "value": 3,
+      "operator": "gte"
+    },
+    {
+      "type": "hidden",
+      "target": {
+        "locator": "#beta-banner",
+        "unstable": true
+      }
+    }
+  ]
+}
