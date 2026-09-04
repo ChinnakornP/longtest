@@ -8,7 +8,7 @@ import type { ApiErrorBody } from './types';
 // In production apps/web has no backend of its own (ADR-008) - fail the
 // build/boot instead of silently 404ing every request when the env var was
 // left unset.
-function resolveApiBase(): string {
+export function resolveApiBase(): string {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (configured) return configured;
   if (process.env.NODE_ENV === 'production') {
