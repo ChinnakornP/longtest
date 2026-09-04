@@ -50,13 +50,29 @@ logs: ## Tail the local stack logs
 # database
 # ---------------------------------------------------------------------------
 
+# Database recipes source .env themselves so `make migrate-up` works straight
+# after `make up`, without the developer exporting DATABASE_URL by hand.
+DOTENV = set -a; if [ -f .env ]; then . ./.env; fi; set +a;
+
 .PHONY: migrate-up
-migrate-up: ## Apply database migrations
-	cd server && $(GO) run ./cmd/migrate up
+migrate-up: .env ## Apply database migrations
+	@$(DOTENV) cd server && $(GO) run ./cmd/migrate up
 
 .PHONY: migrate-down
-migrate-down: ## Roll back the most recent database migration
-	cd server && $(GO) run ./cmd/migrate down
+migrate-down: .env ## Roll back every migration (leaves an empty database)
+	@$(DOTENV) cd server && $(GO) run ./cmd/migrate down-all
+
+.PHONY: migrate-down-one
+migrate-down-one: .env ## Roll back only the most recent migration
+	@$(DOTENV) cd server && $(GO) run ./cmd/migrate down
+
+.PHONY: migrate-status
+migrate-status: .env ## Show which migrations are applied
+	@$(DOTENV) cd server && $(GO) run ./cmd/migrate status
+
+.PHONY: seed
+seed: .env ## Seed a dev database with one org, one owner and one project
+	@$(DOTENV) cd server && $(GO) run ./cmd/seed
 
 # ---------------------------------------------------------------------------
 # codegen
@@ -70,11 +86,9 @@ gen-schema: ## Generate Go + TS types from packages/qa-schema
 	$(PNPM) --filter @qa/schema run gen
 
 .PHONY: gen-sqlc
-gen-sqlc: ## Generate the sqlc database layer
-	@if [ ! -f server/sqlc.yaml ]; then \
-	  echo "skip: server/sqlc.yaml not present yet (owned by T02)"; \
-	elif ! command -v sqlc >/dev/null 2>&1; then \
-	  echo "sqlc not installed: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest" >&2; exit 1; \
+gen-sqlc: ## Generate the sqlc database layer from migrations/ + queries/
+	@if ! command -v sqlc >/dev/null 2>&1; then \
+	  echo "sqlc not installed: run 'make tools'" >&2; exit 1; \
 	else \
 	  cd server && sqlc generate; \
 	fi
@@ -114,11 +128,16 @@ lint-js: node_modules ## eslint + tsc across the pnpm workspace
 test: test-go test-js ## Run every test suite
 
 .PHONY: test-go
-test-go: ## go test on every Go module
+test-go: ## go test on every Go module (database-backed tests skip)
 	@for m in $(GO_MODULES); do \
 	  echo "==> go test $$m"; \
 	  (cd $$m && $(GO) test ./...); \
 	done
+
+.PHONY: test-db
+test-db: .env ## go test with a real Postgres (needs `make up` + `make migrate-up`)
+	@$(DOTENV) export TEST_DATABASE_URL="$${TEST_DATABASE_URL:-$$DATABASE_URL}"; \
+	  cd server && $(GO) test ./... -count=1
 
 .PHONY: test-js
 test-js: node_modules ## vitest across the pnpm workspace
@@ -159,6 +178,7 @@ install: ## Install JS dependencies
 .PHONY: tools
 tools: ## Install the pinned Go developer tooling
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+	$(GO) install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
 
 .PHONY: scan-secrets
 scan-secrets: ## Run the same secret scan CI runs

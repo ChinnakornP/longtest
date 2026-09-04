@@ -49,9 +49,11 @@ packages/qa-schema/       JSON Schema wire contracts + codegen      (T1)
 packages/ui/              shared presentational components
 packages/types/           shared non-wire TypeScript types
 server/                   Go backend: REST, WebSocket, job queue    (T4)
-  cmd/{server,migrate}/
+  cmd/{server,migrate,seed}/
+  migrations/             versioned PostgreSQL schema
+  internal/db/            hand-written SQL + sqlc-generated query layer
   internal/{auth,org,project,runtime,run,testcase,report,artifact,realtime}/
-  pkg/db/
+  pkg/db/                 DSN handling, connection pool, migrator
 daemon/                   Go QA daemon, runs on the operator's box  (T5)
   {browser,runtime,agent,discovery,workspace,artifacts}/
   executor/               Node sidecar that owns Playwright         (T6)
@@ -62,6 +64,69 @@ docs/adr/                 architecture decision records             (T3)
 
 Most directories are stage-1 placeholders; the task that fills each one is
 noted above and in the per-directory README.
+
+## Database
+
+PostgreSQL is the source of truth, the job queue and the event log. There is no
+Redis and no ORM.
+
+- **Migrations: [goose](https://github.com/pressly/goose)**, one file per
+  change under `server/migrations`, `up` and `down` in the same file, embedded
+  into the `migrate` binary. Chosen over golang-migrate because keeping both
+  directions in one file makes a missing `down` obvious in review, and because
+  `embed.FS` support means deploying the schema is deploying one binary.
+- **Queries: [sqlc](https://sqlc.dev)**. SQL is written by hand in
+  `server/internal/db/queries` and compiled into type-safe Go in
+  `server/internal/db/dbgen`. sqlc type-checks each query against the same
+  migration files the migrator applies, so a query cannot drift from the
+  deployed schema. The generated code is committed, so `go build` works without
+  sqlc installed.
+
+```bash
+make up            # start postgres
+make migrate-up    # apply the schema
+make migrate-status
+SEED_OWNER_PASSWORD=... make seed   # one org, one owner, one project
+
+make gen-sqlc      # regenerate after editing migrations/ or queries/
+make test-db       # the Go tests that need a real database
+make migrate-down  # roll everything back, leaving an empty database
+```
+
+### Multi-tenancy
+
+The platform is multi-tenant from the first migration. Retrofitting tenancy
+means rewriting every query, so the rules below are enforced mechanically
+rather than by convention:
+
+- Every table holding customer data has `org_id uuid NOT NULL REFERENCES
+  organizations (id)` and `UNIQUE (org_id, id)`.
+- Cross-table references inside a tenant are **composite foreign keys**
+  `(org_id, parent_id) -> parent (org_id, id)`. A row in one organization
+  physically cannot point at a row in another; Postgres rejects it, not the
+  service layer. See the header of `server/migrations/00001_extensions.sql` for
+  why this was chosen over a validation trigger.
+- Every query that touches a domain table binds `org_id` to a query parameter.
+  `TestQueriesAreOrgScoped` in `server/internal/db` fails the build otherwise,
+  and its own negative tests prove it still catches violations. A query that
+  genuinely cannot be scoped (a platform maintenance sweeper) must carry an
+  `-- org-scope-exempt: <reason>` annotation.
+- Artifact storage keys are `orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/[{testCaseId}/]{name}`
+  and a CHECK constraint refuses any key that does not start with the row's own
+  org and run.
+
+Postgres row-level security is deliberately **not** used in the MVP: the
+query-level rule plus these tests is the gate, and RLS would need a per-request
+`SET LOCAL` that a pooled connection makes easy to get subtly wrong. It stays
+available as later defence in depth.
+
+### Adding a migration
+
+Forward-only. Never edit an applied file; add the next number. Follow
+expand → migrate → contract: a column is added in one release and dropped in a
+later one, and nothing is renamed in the same deploy as the code that uses it.
+Anything that takes a long lock on a busy table gets its own migration with
+`-- +goose NO TRANSACTION` and `CREATE INDEX CONCURRENTLY`.
 
 ## Contracts
 
