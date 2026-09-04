@@ -79,3 +79,27 @@ LIMIT $3;
 -- name: GetTestCaseVersion :one
 SELECT * FROM test_case_versions
 WHERE org_id = $1 AND test_case_id = $2 AND version = $3;
+
+-- Resolves an explicit test-case selection in one statement.
+--
+-- Both the organization and the project are bound, so a selection that names a
+-- case from another project (or another tenant) simply returns fewer rows than
+-- were asked for, and the caller reports that as "not found" without ever
+-- learning which id was the bad one.
+-- name: ListTestCasesByIDs :many
+SELECT * FROM test_cases
+WHERE org_id = $1
+  AND project_id = $2
+  AND id = ANY (sqlc.arg(ids)::uuid[])
+ORDER BY priority, ref;
+
+-- Resolves the case refs a result frame names, in one statement.
+--
+-- A run.result carries up to 500 executions and as many findings, each naming
+-- its case by ref ("TC-001"); looking them up one at a time is the N+1 this
+-- replaces, and it would run inside the ingest transaction.
+-- name: ListTestCasesByRefs :many
+SELECT * FROM test_cases
+WHERE org_id = $1
+  AND project_id = $2
+  AND ref = ANY (sqlc.arg(refs)::text[]);

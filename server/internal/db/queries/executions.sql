@@ -113,3 +113,22 @@ FROM execution_assertions a
 JOIN executions e ON e.id = a.execution_id AND e.org_id = a.org_id
 WHERE a.org_id = $1 AND e.run_id = $2
 ORDER BY a.execution_id, a.assertion_index;
+
+-- The exact test-case documents a run was assigned to execute.
+--
+-- It joins through test_case_versions rather than test_cases so the daemon is
+-- handed the definition the execution row was PINNED to at enqueue time. A case
+-- edited between "start run" and "daemon picks it up" must not change what runs,
+-- or the report would describe a document that never executed.
+-- name: ListTestCaseDocumentsForRun :many
+SELECT tc.id, tc.ref, tc.name, tc.priority, tc.category,
+       e.test_case_version, tcv.payload
+FROM executions e
+JOIN test_cases tc
+  ON tc.id = e.test_case_id AND tc.org_id = e.org_id
+JOIN test_case_versions tcv
+  ON tcv.test_case_id = e.test_case_id
+ AND tcv.version = e.test_case_version
+ AND tcv.org_id = e.org_id
+WHERE e.org_id = $1 AND e.run_id = $2
+ORDER BY tc.priority, tc.ref;
