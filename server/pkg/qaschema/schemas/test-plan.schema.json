@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa.local/schema/test-plan/1",
+  "x-contract-version": "1.0.0",
+  "title": "Test plan",
+  "description": "The out.json an AI Planner writes into its run workspace. Validated before anything else reads it, so a malformed model response fails at the boundary with a field path instead of halfway through execution.",
+  "$ref": "#/$defs/TestPlan",
+  "$defs": {
+    "TestPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "testCases", "rationale", "coverageNotes"],
+      "properties": {
+        "version": { "const": 1 },
+        "projectId": { "type": "string", "format": "uuid" },
+        "sourceAppMapRunId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Which run produced the application map this plan was written against. A plan built on a stale map is still reproducible, but it is knowably stale."
+        },
+        "testCases": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": { "$ref": "https://qa.local/schema/test-case/1#/$defs/TestCase" }
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000,
+          "description": "Why these cases and not others. Model prose, shown to a human reviewer, never parsed."
+        },
+        "coverageNotes": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000,
+          "description": "What the plan does not cover, and why."
+        }
+      }
+    }
+  }
+}

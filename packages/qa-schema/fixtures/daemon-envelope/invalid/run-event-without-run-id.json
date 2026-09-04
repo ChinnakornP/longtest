@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "run.event",
+  "msgId": "018f3a92-0006-7000-8000-0123456789ab",
+  "seq": 3,
+  "ts": "2026-09-04T09:15:04Z",
+  "payload": {
+    "phase": "execute",
+    "level": "info",
+    "code": "step_finished",
+    "message": "step 2 passed"
+  }
+}

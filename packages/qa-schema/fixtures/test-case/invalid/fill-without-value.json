@@ -1,0 +1,8 @@
+{
+  "id": "TC-205",
+  "name": "Fill the search box",
+  "priority": "medium",
+  "category": "functional",
+  "steps": [{ "action": "fill", "target": { "ref": "emp.input.search" } }],
+  "assertions": [{ "type": "visible", "target": { "ref": "emp.table" } }]
+}

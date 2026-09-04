@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "type": "heartbeat",
+  "msgId": "018f3a92-0002-7000-8000-0123456789ab",
+  "runId": null,
+  "seq": 41,
+  "ts": "2026-09-04T09:14:30Z",
+  "payload": {
+    "uptimeSec": 3612,
+    "activeRuns": ["018f3a90-11a2-7000-8000-0123456789ab"]
+  }
+}

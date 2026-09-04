@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "baseUrl": "https://demo.example.test",
+  "pages": [
+    {
+      "id": "page.employees",
+      "path": "/employees",
+      "title": "Employees",
+      "elements": [
+        {
+          "ref": "emp.table",
+          "type": "table",
+          "locators": [{ "kind": "testId", "value": "employee-table" }]
+        }
+      ]
+    }
+  ],
+  "workflows": []
+}

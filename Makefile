@@ -66,7 +66,7 @@ migrate-down: ## Roll back the most recent database migration
 gen: gen-schema gen-sqlc ## Run every code generator
 
 .PHONY: gen-schema
-gen-schema: ## Generate Go + TS types from packages/qa-schema
+gen-schema: node_modules ## Generate Go + TS types from packages/qa-schema
 	$(PNPM) --filter @qa/schema run gen
 
 .PHONY: gen-sqlc

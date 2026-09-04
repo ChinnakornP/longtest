@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "type": "run.event",
+  "msgId": "018f3a92-0004-7000-8000-0123456789ab",
+  "runId": "018f3a90-11a2-7000-8000-0123456789ab",
+  "seq": 17,
+  "ts": "2026-09-04T09:15:04Z",
+  "payload": {
+    "phase": "discover",
+    "level": "info",
+    "code": "page_discovered",
+    "message": "found a page reachable from the main nav",
+    "data": { "path": "/employees", "title": "Employees", "elementCount": 12 }
+  }
+}

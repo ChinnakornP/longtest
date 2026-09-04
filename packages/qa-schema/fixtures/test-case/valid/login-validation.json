@@ -1,0 +1,21 @@
+{
+  "id": "TC-014",
+  "name": "Login rejects a wrong password",
+  "description": "The failure path has to stay on /login and must not leak a stack trace to the console.",
+  "priority": "high",
+  "category": "validation",
+  "status": "approved",
+  "tags": ["auth", "negative"],
+  "steps": [
+    { "action": "navigate", "url": "/login", "waitUntil": "domcontentloaded" },
+    { "action": "fill", "target": { "ref": "login.input.email" }, "value": "admin@example.test" },
+    { "action": "fill", "target": { "ref": "login.input.password" }, "value": "not-the-password" },
+    { "action": "press", "target": { "ref": "login.input.password" }, "key": "Enter" },
+    { "action": "screenshot", "name": "after-failed-login", "fullPage": true }
+  ],
+  "assertions": [
+    { "type": "visible", "target": { "ref": "login.error.banner" } },
+    { "type": "urlMatches", "value": "^/login" },
+    { "type": "noConsoleError", "ignorePatterns": ["favicon"] }
+  ]
+}

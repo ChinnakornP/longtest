@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "testCaseId": "TC-003",
+  "executionId": "018f3a91-4d5e-7abc-8def-0123456789ab",
+  "stepIndex": 2,
+  "failureClass": "PRODUCT_BUG",
+  "summary": "POST /api/employees returns 500 on save",
+  "rootCause": "The UI submitted the form correctly and the request carried every required field, but the backend answered 500 with an empty body. The row in the table is unchanged because the save never committed.",
+  "confidence": 0.94,
+  "evidence": ["shot-after-save", "net-log"],
+  "suggestedFix": "Check the employees create handler for an unhandled error on duplicate email; the request that failed reused an address already present in the list.",
+  "analyzedBy": { "provider": "claude", "version": "2.1.0" }
+}
