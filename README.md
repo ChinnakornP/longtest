@@ -206,13 +206,14 @@ open a public issue.
 targets, so a green local run predicts a green CI run. `make test-security`
 runs the injection corpus and the boundary tests on their own.
 
-CI (`.github/workflows/ci.yml`) has four gates — `lint`, `test`, `security`,
-`test-db` — and one aggregate job, `ci`, that depends on all of them.
-**`ci` is the check to require in branch protection on `main`**: requiring the
-four by name means a job added later is not covered until someone remembers to
-update the protection rule, and a gate that is not required is not a gate.
-Setting it is a repository-settings change and cannot be done from a workflow
-file.
+CI (`.github/workflows/ci.yml`) has four gates: `lint`, `test`, `security`,
+`test-db`.
+
+> **Pending workflow change.** An aggregate `ci` job and the injection-corpus
+> gate are parked at `.github/ci-workflow-pending/ci.yml` because the agent's
+> credential lacks the GitHub `workflow` scope. See the README there — it is a
+> `cp` and a push from a credential that has the scope, plus one branch
+> protection setting.
 
 Changes under `.github/`, `docker/`, `docker-compose.yml`, `.env.example`,
 `packages/qa-schema/`, `daemon/security/` or `daemon/agent/prompts/` need a
