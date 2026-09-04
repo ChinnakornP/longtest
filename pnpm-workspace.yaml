@@ -11,7 +11,9 @@ packages:
 minimumReleaseAge: 1440
 
 # esbuild ships a postinstall script that downloads its native binary. It is
-# safe to run; we whitelist it here so pnpm 11's postinstall guard does not
-# refuse every install.
-onlyBuiltDependencies:
-  - esbuild
+# safe to run; we whitelist it here so pnpm 11's postinstall guard (which
+# defaults to strictDepBuilds=true and ERR_PNPM_IGNORED_BUILDS on unknown
+# packages) does not refuse every install. This replaces the v10
+# `onlyBuiltDependencies: [esbuild]` field, which pnpm 11 has removed.
+allowBuilds:
+  esbuild: true
