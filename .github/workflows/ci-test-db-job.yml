@@ -1,0 +1,57 @@
+# Proposed addition to .github/workflows/ci.yml — LONG-5 (T03 DB + sqlc).
+#
+# Not committed: .github/workflows/** is reserved for the workspace owner.
+# Paste this job alongside the existing `lint` / `test` / `security` jobs.
+#
+# Why it is needed: `make test-go` runs the schema, queue and tenancy tests
+# only when TEST_DATABASE_URL is set, and skips them otherwise. Without this
+# job CI would keep reporting green while the cross-tenant FK test, the
+# SKIP LOCKED test and the migration round-trip test never actually run.
+#
+# The tests create and drop their own throwaway database on the service
+# container, so nothing has to be migrated before they start.
+
+  test-db:
+    name: test (postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16.10-alpine
+        env:
+          POSTGRES_DB: qa
+          POSTGRES_USER: qa
+          # Ephemeral, per-job, reachable only from this runner's job network.
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qa -d qa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: server/go.mod
+          cache: false
+
+      - name: Cache Go modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-testdb-${{ runner.os }}-${{ hashFiles('**/go.mod', '**/go.sum') }}
+          restore-keys: go-testdb-${{ runner.os }}-
+
+      - name: Migration round trip, schema and queue tests
+        env:
+          # The suite CREATEs and DROPs its own scratch databases on this
+          # server, so it needs the maintenance database, not a migrated one.
+          TEST_DATABASE_URL: postgres://qa:ci-only-not-a-secret@127.0.0.1:5432/qa?sslmode=disable
+        run: cd server && go test ./... -count=1
