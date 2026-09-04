@@ -215,6 +215,13 @@ func TestArtifactStorageKeyIsTenantScoped(t *testing.T) {
 		{"no org prefix at all", fmt.Sprintf("runs/%s/%s/shot.png", day, run.ID), true},
 		{"path traversal in the name", fmt.Sprintf("orgs/%s/runs/%s/%s/../../shot.png", org.ID, day, run.ID), true},
 		{"path traversal in the case segment", fmt.Sprintf("orgs/%s/runs/%s/%s/../%s/shot.png", org.ID, day, run.ID, uuid.New()), true},
+		// The case above is three segments deep, so it would be rejected on
+		// depth alone. These are the traversals that ARE one segment deep and
+		// so have to be refused by the segment shape itself.
+		{"dot-dot as the case segment", fmt.Sprintf("orgs/%s/runs/%s/%s/../shot.png", org.ID, day, run.ID), true},
+		{"single dot as the case segment", fmt.Sprintf("orgs/%s/runs/%s/%s/./shot.png", org.ID, day, run.ID), true},
+		{"dot-dot as the name", fmt.Sprintf("orgs/%s/runs/%s/%s/..", org.ID, day, run.ID), true},
+		{"dotfile name", fmt.Sprintf("orgs/%s/runs/%s/%s/.bashrc", org.ID, day, run.ID), true},
 		{"malformed date", fmt.Sprintf("orgs/%s/runs/latest/%s/shot.png", org.ID, run.ID), true},
 		// The tail is bounded: one optional case segment, then a name. A deeper
 		// path would let a daemon invent structure the report cannot address.

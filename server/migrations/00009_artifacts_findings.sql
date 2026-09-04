@@ -19,6 +19,12 @@
 -- The tenant boundary is the orgs/{orgId}/runs/{runId}/ prefix, which is
 -- checked literally below and is the same prefix the presigned PUT is scoped
 -- to; the tail is only a name.
+--
+-- Both tail segments must START with an alphanumeric. S3 keys are opaque, so
+-- '..' cannot escape the prefix in the object store itself - but these keys get
+-- joined onto filesystem paths downstream (report bundling, artifact download),
+-- and '{runId}/../shot.png' is one segment deep and would otherwise match. The
+-- same rule drops '.', a bare '..' name and dotfiles.
 
 -- +goose Up
 
@@ -56,8 +62,8 @@ CREATE TABLE artifacts (
         storage_key ~ (
             '^orgs/' || org_id::text
             || '/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/' || run_id::text
-            || '/([A-Za-z0-9._-]{1,200}/)?'
-            || '[A-Za-z0-9._-]{1,200}$'
+            || '/([A-Za-z0-9][A-Za-z0-9._-]{0,199}/)?'
+            || '[A-Za-z0-9][A-Za-z0-9._-]{0,199}$'
         )
     ),
     CONSTRAINT artifacts_org_run_fkey
