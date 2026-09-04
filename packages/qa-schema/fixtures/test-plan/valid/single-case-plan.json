@@ -2,6 +2,7 @@
   "version": 1,
   "testCases": [
     {
+      "version": 1,
       "id": "TC-102",
       "name": "Toggle the beta banner",
       "priority": "low",

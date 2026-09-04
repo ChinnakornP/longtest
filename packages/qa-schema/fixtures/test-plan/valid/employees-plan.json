@@ -4,6 +4,7 @@
   "sourceAppMapRunId": "018f3a90-11a2-7000-8000-0123456789ab",
   "testCases": [
     {
+      "version": 1,
       "id": "TC-001",
       "name": "Create employee",
       "priority": "critical",
@@ -69,6 +70,7 @@
       ]
     },
     {
+      "version": 1,
       "id": "TC-014",
       "name": "Login rejects a wrong password",
       "description": "The failure path has to stay on /login and must not leak a stack trace to the console.",

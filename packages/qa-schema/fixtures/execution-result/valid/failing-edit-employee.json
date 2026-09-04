@@ -1,11 +1,16 @@
 {
+  "version": 1,
   "testCaseId": "TC-003",
   "runId": "018f3a90-11a2-7000-8000-0123456789ab",
   "result": "fail",
   "failureClass": "PRODUCT_BUG",
   "message": "Assertion 0 failed: the employee name did not change after save.",
   "steps": [
-    { "index": 0, "action": "navigate", "status": "pass" },
+    {
+      "index": 0,
+      "action": "navigate",
+      "status": "pass"
+    },
     {
       "index": 1,
       "action": "fill",
@@ -13,7 +18,11 @@
       "resolvedLocator": "#first-name",
       "unstableTarget": true
     },
-    { "index": 2, "action": "click", "status": "pass" }
+    {
+      "index": 2,
+      "action": "click",
+      "status": "pass"
+    }
   ],
   "assertions": [
     {
@@ -23,7 +32,10 @@
       "expected": "John",
       "actual": "James",
       "message": "the row still shows the old value",
-      "artifactIds": ["shot-after-save", "net-log"]
+      "artifactIds": [
+        "shot-after-save",
+        "net-log"
+      ]
     }
   ],
   "artifacts": [

@@ -1,25 +1,66 @@
 {
+  "version": 1,
   "id": "TC-001",
   "name": "Create employee",
   "priority": "critical",
   "category": "functional",
-  "preconditions": ["fixture:logged_in_as_admin"],
+  "preconditions": [
+    "fixture:logged_in_as_admin"
+  ],
   "steps": [
-    { "action": "navigate", "url": "/employees" },
-    { "action": "click", "target": { "ref": "emp.btn.add" } },
-    { "action": "fill", "target": { "ref": "emp.form.firstName" }, "value": "John" },
-    { "action": "click", "target": { "ref": "emp.btn.save" } },
+    {
+      "action": "navigate",
+      "url": "/employees"
+    },
+    {
+      "action": "click",
+      "target": {
+        "ref": "emp.btn.add"
+      }
+    },
+    {
+      "action": "fill",
+      "target": {
+        "ref": "emp.form.firstName"
+      },
+      "value": "John"
+    },
+    {
+      "action": "click",
+      "target": {
+        "ref": "emp.btn.save"
+      }
+    },
     {
       "action": "waitFor",
-      "target": { "ref": "emp.toast.success" },
+      "target": {
+        "ref": "emp.toast.success"
+      },
       "state": "visible",
       "timeoutMs": 5000
     }
   ],
   "assertions": [
-    { "type": "visible", "target": { "ref": "emp.toast.success" } },
-    { "type": "textContains", "target": { "ref": "emp.table" }, "value": "John" },
-    { "type": "urlMatches", "value": "^/employees/[0-9]+$" },
-    { "type": "httpStatusNot", "value": 500 }
+    {
+      "type": "visible",
+      "target": {
+        "ref": "emp.toast.success"
+      }
+    },
+    {
+      "type": "textContains",
+      "target": {
+        "ref": "emp.table"
+      },
+      "value": "John"
+    },
+    {
+      "type": "urlMatches",
+      "value": "^/employees/[0-9]+$"
+    },
+    {
+      "type": "httpStatusNot",
+      "value": 500
+    }
   ]
 }

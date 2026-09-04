@@ -1,4 +1,5 @@
 {
+  "version": 1,
   "testCaseId": "TC-014",
   "result": "skipped",
   "message": "precondition fixture:logged_in_as_admin could not be established",

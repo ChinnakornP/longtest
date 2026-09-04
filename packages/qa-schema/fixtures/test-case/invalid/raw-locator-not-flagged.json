@@ -1,11 +1,27 @@
 {
+  "version": 1,
   "id": "TC-203",
   "name": "Click a selector the planner invented",
   "priority": "high",
   "category": "functional",
   "steps": [
-    { "action": "navigate", "url": "/employees" },
-    { "action": "click", "target": { "locator": "div.card:nth-child(2) > button" } }
+    {
+      "action": "navigate",
+      "url": "/employees"
+    },
+    {
+      "action": "click",
+      "target": {
+        "locator": "div.card:nth-child(2) > button"
+      }
+    }
   ],
-  "assertions": [{ "type": "visible", "target": { "ref": "emp.toast.success" } }]
+  "assertions": [
+    {
+      "type": "visible",
+      "target": {
+        "ref": "emp.toast.success"
+      }
+    }
+  ]
 }

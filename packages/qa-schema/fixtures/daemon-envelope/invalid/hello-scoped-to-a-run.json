@@ -8,7 +8,9 @@
   "payload": {
     "runtimeId": "018f3a8d-9c1a-7111-a222-0123456789ab",
     "version": "0.3.1",
-    "browsers": ["chromium"],
+    "browsers": [
+      "chromium"
+    ],
     "agents": []
   }
 }

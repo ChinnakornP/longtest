@@ -5,5 +5,8 @@
   "runId": "018f3a90-11a2-7000-8000-0123456789ab",
   "seq": 1,
   "ts": "2026-09-04T09:20:00Z",
-  "payload": { "reason": "user_requested", "message": "cancelled from the run view" }
+  "payload": {
+    "reason": "user_requested",
+    "message": "cancelled from the run view"
+  }
 }

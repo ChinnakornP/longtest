@@ -2,6 +2,7 @@
   "version": 1,
   "testCases": [
     {
+      "version": 1,
       "id": "TC-900",
       "name": "The home page renders",
       "priority": "medium",

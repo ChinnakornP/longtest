@@ -10,6 +10,10 @@
     "level": "info",
     "code": "page_discovered",
     "message": "found a page reachable from the main nav",
-    "data": { "path": "/employees", "title": "Employees", "elementCount": 12 }
+    "data": {
+      "path": "/employees",
+      "title": "Employees",
+      "elementCount": 12
+    }
   }
 }

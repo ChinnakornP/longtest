@@ -83,16 +83,22 @@ type Artifact struct {
 	Kind ArtifactKind `json:"kind"`
 
 	// Key — Object storage key:
-	// orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/{testCaseId}/{filename}. The org
-	// prefix is what a presigned URL is scoped to, so the shape is enforced here
-	// rather than trusted from the daemon.
+	// orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/{testCaseId}/{filename}, with the
+	// {testCaseId} segment omitted for a run-level artifact such as a discovery
+	// HAR. That segment is a test case *ref* (TC-001), not the database uuid: the
+	// daemon builds the key from the test-case document it was handed and never
+	// sees the uuid the backend assigns. What carries the tenant boundary is the
+	// orgs/{orgId}/runs/{runId}/ prefix, which is the same prefix the presigned
+	// PUT policy is scoped to.
 	Key         string  `json:"key"`
 	ContentType *string `json:"contentType,omitempty"`
 	SizeBytes   *int    `json:"sizeBytes,omitempty"`
 	Sha256      *string `json:"sha256,omitempty"`
 }
 
-// ArtifactID is part of the generated contract types.
+// ArtifactID — Run-local handle the daemon makes up so that steps, assertions
+// and findings can point at the same evidence before anything has been stored.
+// It is NOT the database id.
 type ArtifactID = string
 
 // ArtifactKind is part of the generated contract types.
@@ -385,6 +391,7 @@ func (v EnvelopeType) IsValid() bool {
 
 // ExecutionResult is part of the generated contract types.
 type ExecutionResult struct {
+	Version      int           `json:"version"`
 	TestCaseID   string        `json:"testCaseId"`
 	RunID        *string       `json:"runId,omitempty"`
 	Attempt      *int          `json:"attempt,omitempty"`
@@ -1097,6 +1104,11 @@ type TargetByRef struct {
 
 // TestCase is part of the generated contract types.
 type TestCase struct {
+	// Version — Which contract wrote this case. A test case outlives the run that
+	// produced it — it is stored as jsonb and replayed as regression — so the row
+	// has to say what it is without the reader guessing from its shape.
+	Version int `json:"version"`
+
 	// ID — Stable identifier the planner assigns, e.g. TC-001. Reused across runs
 	// so results can be compared run over run.
 	ID          string           `json:"id"`

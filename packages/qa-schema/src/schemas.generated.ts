@@ -933,6 +933,7 @@ export const SCHEMA_DOCUMENTS: Record<SchemaId, unknown> = {
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "version",
           "testCaseId",
           "result",
           "steps",
@@ -941,6 +942,9 @@ export const SCHEMA_DOCUMENTS: Record<SchemaId, unknown> = {
           "endedAt"
         ],
         "properties": {
+          "version": {
+            "const": 1
+          },
           "testCaseId": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
@@ -1106,7 +1110,9 @@ export const SCHEMA_DOCUMENTS: Record<SchemaId, unknown> = {
       },
       "ArtifactId": {
         "type": "string",
-        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+        "description": "Run-local handle the daemon makes up so that steps, assertions and findings can point at the same evidence before anything has been stored. It is NOT the database id.",
+        "$comment": "Two invariants JSON Schema cannot express, and that ingest therefore has to enforce (LONG-10): these ids must be unique within one run, and ingest must build a wireId -> artifacts.id (uuid) map from run.result.artifacts[] before writing finding_evidence. A duplicate id must be rejected, never last-write-wins."
       },
       "Artifact": {
         "type": "object",
@@ -1134,8 +1140,8 @@ export const SCHEMA_DOCUMENTS: Record<SchemaId, unknown> = {
           "key": {
             "type": "string",
             "maxLength": 1024,
-            "pattern": "^orgs/[A-Za-z0-9._-]+/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$",
-            "description": "Object storage key: orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/{testCaseId}/{filename}. The org prefix is what a presigned URL is scoped to, so the shape is enforced here rather than trusted from the daemon."
+            "pattern": "^orgs/[A-Za-z0-9._-]+/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9._-]+/([A-Za-z0-9._-]{1,200}/)?[A-Za-z0-9._-]{1,200}$",
+            "description": "Object storage key: orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/{testCaseId}/{filename}, with the {testCaseId} segment omitted for a run-level artifact such as a discovery HAR. That segment is a test case *ref* (TC-001), not the database uuid: the daemon builds the key from the test-case document it was handed and never sees the uuid the backend assigns. What carries the tenant boundary is the orgs/{orgId}/runs/{runId}/ prefix, which is the same prefix the presigned PUT policy is scoped to."
           },
           "contentType": {
             "type": "string",
@@ -1275,6 +1281,7 @@ export const SCHEMA_DOCUMENTS: Record<SchemaId, unknown> = {
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "version",
           "id",
           "name",
           "priority",
@@ -1283,6 +1290,10 @@ export const SCHEMA_DOCUMENTS: Record<SchemaId, unknown> = {
           "assertions"
         ],
         "properties": {
+          "version": {
+            "const": 1,
+            "description": "Which contract wrote this case. A test case outlives the run that produced it — it is stored as jsonb and replayed as regression — so the row has to say what it is without the reader guessing from its shape."
+          },
           "id": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",

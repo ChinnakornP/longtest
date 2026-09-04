@@ -83,6 +83,28 @@ unreadable file, unknown schema id). CI can tell "this document is bad" from
   treated as structure.
 - **Every object is closed** (`additionalProperties: false`). An unexpected
   field is a contract mismatch, not something to ignore.
+- **Every document says which contract wrote it** — `version: 1` on the five
+  documents, `v: 1` on the daemon envelope. Required, not optional: the ones
+  that get stored as `jsonb` have to be readable back after `@2` ships.
+
+## What a schema cannot enforce
+
+Two invariants live at ingest (LONG-10) rather than here, because JSON Schema
+cannot express either one. They are recorded in `$comment` on `ArtifactId` so
+they are not rediscovered the hard way:
+
+- `artifacts[].id` is a **run-local handle the daemon invents**, not a database
+  id, and it must be unique within one run. A duplicate has to be rejected, not
+  resolved last-write-wins.
+- Ingest builds the `wireId -> artifacts.id (uuid)` map from
+  `run.result.artifacts[]` *before* writing `finding_evidence`, because
+  `finding.evidence[]` carries the wire handle and the column is a uuid FK.
+
+The artifact key follows from the same split: `orgs/{orgId}/runs/{date}/{runId}/`
+is the tenant boundary and matches the presigned PUT prefix exactly, while the
+optional `{testCaseId}` segment is a test-case **ref** (`TC-001`). The daemon
+composes the key from the document it was handed and never sees the uuid the
+backend later assigns.
 
 ## Why the validator is hand-written
 

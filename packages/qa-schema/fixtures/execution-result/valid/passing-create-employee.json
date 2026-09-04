@@ -1,4 +1,5 @@
 {
+  "version": 1,
   "testCaseId": "TC-001",
   "runId": "018f3a90-11a2-7000-8000-0123456789ab",
   "attempt": 1,
@@ -22,8 +23,18 @@
     }
   ],
   "assertions": [
-    { "index": 0, "type": "visible", "status": "pass" },
-    { "index": 1, "type": "textContains", "status": "pass", "expected": "John", "actual": "John Doe" }
+    {
+      "index": 0,
+      "type": "visible",
+      "status": "pass"
+    },
+    {
+      "index": 1,
+      "type": "textContains",
+      "status": "pass",
+      "expected": "John",
+      "actual": "John Doe"
+    }
   ],
   "artifacts": [
     {

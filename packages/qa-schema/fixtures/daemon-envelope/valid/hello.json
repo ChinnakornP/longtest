@@ -9,10 +9,20 @@
     "version": "0.3.1",
     "hostname": "qa-macbook",
     "os": "darwin",
-    "browsers": ["chromium"],
+    "browsers": [
+      "chromium"
+    ],
     "agents": [
-      { "name": "claude", "version": "2.1.0", "ok": true },
-      { "name": "opencode", "ok": false, "error": "not on PATH" }
+      {
+        "name": "claude",
+        "version": "2.1.0",
+        "ok": true
+      },
+      {
+        "name": "opencode",
+        "ok": false,
+        "error": "not on PATH"
+      }
     ]
   }
 }

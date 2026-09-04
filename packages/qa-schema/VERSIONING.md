@@ -14,6 +14,13 @@ that a mismatch fails at the boundary instead of halfway through a run.
   `CONTRACT_VERSIONS['test-case@1']` in TypeScript and
   `qaschema.ContractVersions["test-case@1"]` in Go, and the generator refuses a
   version whose major does not match the `$id`.
+- **The document itself carries the major too.** All six contracts have a
+  required `version: 1` (`v: 1` on the envelope, for contract D). That is not
+  redundant: `test-case@1` and `execution-result@1` are stored as `jsonb` and
+  read back long after the run that wrote them, and a row that does not say
+  which contract produced it cannot be migrated when `@2` arrives. Adding the
+  field later would be a breaking change *and* a backfill of every row, because
+  every object here is closed.
 
 ## What counts as what
 

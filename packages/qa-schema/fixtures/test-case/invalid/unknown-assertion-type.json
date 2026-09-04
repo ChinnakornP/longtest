@@ -1,8 +1,21 @@
 {
+  "version": 1,
   "id": "TC-202",
   "name": "Compare the dashboard against a baseline image",
   "priority": "medium",
   "category": "ui_behavior",
-  "steps": [{ "action": "navigate", "url": "/dashboard" }],
-  "assertions": [{ "type": "screenshotMatches", "target": { "ref": "dash.root" } }]
+  "steps": [
+    {
+      "action": "navigate",
+      "url": "/dashboard"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "screenshotMatches",
+      "target": {
+        "ref": "dash.root"
+      }
+    }
+  ]
 }

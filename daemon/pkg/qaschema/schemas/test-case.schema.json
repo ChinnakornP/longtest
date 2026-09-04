@@ -9,8 +9,12 @@
     "TestCase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "priority", "category", "steps", "assertions"],
+      "required": ["version", "id", "name", "priority", "category", "steps", "assertions"],
       "properties": {
+        "version": {
+          "const": 1,
+          "description": "Which contract wrote this case. A test case outlives the run that produced it — it is stored as jsonb and replayed as regression — so the row has to say what it is without the reader guessing from its shape."
+        },
         "id": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",

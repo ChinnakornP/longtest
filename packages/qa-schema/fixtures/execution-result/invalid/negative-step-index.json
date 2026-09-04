@@ -1,7 +1,14 @@
 {
+  "version": 1,
   "testCaseId": "TC-001",
   "result": "error",
-  "steps": [{ "index": -1, "action": "navigate", "status": "error" }],
+  "steps": [
+    {
+      "index": -1,
+      "action": "navigate",
+      "status": "error"
+    }
+  ],
   "artifacts": [],
   "startedAt": "2026-09-04T09:15:02Z",
   "endedAt": "2026-09-04T09:15:09Z"

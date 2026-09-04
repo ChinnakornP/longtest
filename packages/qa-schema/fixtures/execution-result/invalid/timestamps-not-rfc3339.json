@@ -1,4 +1,5 @@
 {
+  "version": 1,
   "testCaseId": "TC-001",
   "result": "pass",
   "steps": [],
