@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "baseUrl": "https://demo.example.test",
+  "pages": [
+    {
+      "id": "page.employees",
+      "path": "/employees",
+      "title": "Employees",
+      "elements": [
+        {
+          "ref": "emp.datagrid",
+          "type": "datagrid",
+          "locators": [{ "kind": "testId", "value": "grid" }],
+          "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+        }
+      ]
+    }
+  ],
+  "workflows": []
+}

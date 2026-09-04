@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "baseUrl": "https://demo.example.test",
+  "projectId": "018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b",
+  "generatedAtRunId": "018f3a90-11a2-7000-8000-0123456789ab",
+  "pages": [
+    {
+      "id": "page.login",
+      "path": "/login",
+      "title": "Sign in",
+      "authRequired": false,
+      "elements": [
+        {
+          "ref": "login.input.email",
+          "type": "input",
+          "label": "Email",
+          "locators": [
+            { "kind": "testId", "value": "login-email" },
+            { "kind": "label", "value": "Email" }
+          ],
+          "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+        },
+        {
+          "ref": "login.btn.submit",
+          "type": "button",
+          "label": "Sign in",
+          "locators": [{ "kind": "role", "value": "button", "name": "Sign in" }],
+          "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+        }
+      ]
+    },
+    {
+      "id": "page.employees",
+      "path": "/employees",
+      "title": "Employees",
+      "authRequired": true,
+      "elements": [
+        {
+          "ref": "emp.btn.add",
+          "type": "button",
+          "label": "Add Employee",
+          "locators": [
+            { "kind": "testId", "value": "add-emp" },
+            { "kind": "role", "value": "button", "name": "Add Employee" }
+          ],
+          "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+        },
+        {
+          "ref": "emp.table",
+          "type": "table",
+          "locators": [{ "kind": "testId", "value": "employee-table" }],
+          "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "id": "wf.create_employee",
+      "name": "Create employee",
+      "path": ["page.employees", "emp.btn.add", "page.employees.create", "emp.btn.save"],
+      "expectedOutcome": "a new row appears in the employee list",
+      "authRequired": true
+    }
+  ]
+}

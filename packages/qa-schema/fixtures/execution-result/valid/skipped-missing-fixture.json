@@ -1,0 +1,10 @@
+{
+  "testCaseId": "TC-014",
+  "result": "skipped",
+  "message": "precondition fixture:logged_in_as_admin could not be established",
+  "steps": [],
+  "artifacts": [],
+  "startedAt": "2026-09-04T09:17:00Z",
+  "endedAt": "2026-09-04T09:17:00Z",
+  "durationMs": 0
+}

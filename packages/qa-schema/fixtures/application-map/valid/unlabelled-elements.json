@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "baseUrl": "https://staging.example.test",
+  "pages": [
+    {
+      "id": "page.settings",
+      "path": "/settings/profile",
+      "title": "Profile",
+      "authRequired": true,
+      "description": "Discovered through the account menu, not from any nav link.",
+      "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab",
+      "elements": [
+        {
+          "ref": "settings.form.profile",
+          "type": "form",
+          "locators": [{ "kind": "css", "value": "form#profile" }],
+          "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+        },
+        {
+          "ref": "settings.other.widget",
+          "type": "other",
+          "locators": [
+            { "kind": "testId", "value": "unknown-widget" },
+            { "kind": "css", "value": "[data-widget]" }
+          ],
+          "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "id": "wf.update_profile",
+      "name": "Update profile",
+      "path": ["page.settings", "settings.form.profile"],
+      "expectedOutcome": "the profile name shown in the header changes"
+    }
+  ]
+}

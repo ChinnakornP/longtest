@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "testCaseId": "TC-003",
+  "stepIndex": 2,
+  "failureClass": "TIMEOUT",
+  "confidence": 0.5,
+  "evidence": ["trace-main"]
+}

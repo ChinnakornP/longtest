@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "testCaseId": "TC-003",
+  "stepIndex": 2,
+  "failureClass": "PRODUCT_BUG",
+  "rootCause": "The save endpoint returned 500.",
+  "confidence": 1.5,
+  "evidence": ["net-log"]
+}

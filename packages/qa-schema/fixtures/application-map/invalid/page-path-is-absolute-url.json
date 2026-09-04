@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "baseUrl": "https://demo.example.test",
+  "pages": [
+    {
+      "id": "page.employees",
+      "path": "https://demo.example.test/employees",
+      "title": "Employees",
+      "elements": []
+    }
+  ],
+  "workflows": []
+}

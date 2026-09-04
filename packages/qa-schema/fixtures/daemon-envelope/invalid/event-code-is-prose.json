@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "type": "run.event",
+  "msgId": "018f3a92-000a-7000-8000-0123456789ab",
+  "runId": "018f3a90-11a2-7000-8000-0123456789ab",
+  "seq": 4,
+  "ts": "2026-09-04T09:15:04Z",
+  "payload": {
+    "phase": "execute",
+    "level": "warn",
+    "code": "Retrying the step because the button was not ready",
+    "message": "retry 1 of 2"
+  }
+}

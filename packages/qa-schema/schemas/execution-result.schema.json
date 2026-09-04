@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qa.local/schema/execution-result/1",
+  "x-contract-version": "1.0.0",
+  "title": "Execution result",
+  "description": "What the Node executor reports back for one test case: per-step outcome, per-assertion outcome and the artifact keys that back them. This is the only evidence the Failure Analyst is allowed to reason from.",
+  "$ref": "#/$defs/ExecutionResult",
+  "$defs": {
+    "ExecutionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["testCaseId", "result", "steps", "artifacts", "startedAt", "endedAt"],
+      "properties": {
+        "testCaseId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+        "runId": { "type": "string", "format": "uuid" },
+        "attempt": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "result": { "$ref": "#/$defs/Outcome" },
+        "failureClass": { "$ref": "https://qa.local/schema/finding/1#/$defs/FailureClass" },
+        "message": {
+          "type": "string",
+          "maxLength": 4000,
+          "description": "Executor-authored summary. Never the raw page text."
+        },
+        "steps": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/StepResult" }
+        },
+        "assertions": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/AssertionResult" }
+        },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/Artifact" }
+        },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": "string", "format": "date-time" },
+        "durationMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "Outcome": {
+      "enum": ["pass", "fail", "skipped", "error"],
+      "description": "fail is the application disagreeing with an assertion; error is the harness not getting far enough to have an opinion."
+    },
+
+    "StepResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "action", "status"],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Position in the test case steps array."
+        },
+        "action": {
+          "$ref": "https://qa.local/schema/test-case/1#/$defs/StepAction"
+        },
+        "status": { "$ref": "#/$defs/Outcome" },
+        "resolvedLocator": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Which locator in the element fallback chain actually matched."
+        },
+        "unstableTarget": {
+          "type": "boolean",
+          "description": "True when the step used a raw locator instead of an application-map ref."
+        },
+        "message": { "type": "string", "maxLength": 4000 },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": "string", "format": "date-time" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "artifactIds": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/ArtifactId" }
+        }
+      }
+    },
+
+    "AssertionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "type", "status"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "type": {
+          "$ref": "https://qa.local/schema/test-case/1#/$defs/AssertionType"
+        },
+        "status": { "$ref": "#/$defs/Outcome" },
+        "expected": { "type": "string", "maxLength": 4000 },
+        "actual": {
+          "type": "string",
+          "maxLength": 4000,
+          "description": "Observed value, lifted off the page under test. Untrusted text."
+        },
+        "message": { "type": "string", "maxLength": 4000 },
+        "artifactIds": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/ArtifactId" }
+        }
+      }
+    },
+
+    "ArtifactId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+
+    "Artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "key"],
+      "properties": {
+        "id": { "$ref": "#/$defs/ArtifactId" },
+        "kind": {
+          "enum": ["screenshot", "trace", "video", "network", "console", "dom", "report"]
+        },
+        "key": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^orgs/[A-Za-z0-9._-]+/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$",
+          "description": "Object storage key: orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/{testCaseId}/{filename}. The org prefix is what a presigned URL is scoped to, so the shape is enforced here rather than trusted from the daemon."
+        },
+        "contentType": { "type": "string", "maxLength": 128 },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

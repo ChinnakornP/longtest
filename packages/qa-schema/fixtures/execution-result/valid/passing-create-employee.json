@@ -1,0 +1,40 @@
+{
+  "testCaseId": "TC-001",
+  "runId": "018f3a90-11a2-7000-8000-0123456789ab",
+  "attempt": 1,
+  "result": "pass",
+  "steps": [
+    {
+      "index": 0,
+      "action": "navigate",
+      "status": "pass",
+      "startedAt": "2026-09-04T09:15:02Z",
+      "endedAt": "2026-09-04T09:15:03.412Z",
+      "durationMs": 1412
+    },
+    {
+      "index": 1,
+      "action": "click",
+      "status": "pass",
+      "resolvedLocator": "getByTestId('add-emp')",
+      "unstableTarget": false,
+      "durationMs": 210
+    }
+  ],
+  "assertions": [
+    { "index": 0, "type": "visible", "status": "pass" },
+    { "index": 1, "type": "textContains", "status": "pass", "expected": "John", "actual": "John Doe" }
+  ],
+  "artifacts": [
+    {
+      "id": "shot-final",
+      "kind": "screenshot",
+      "key": "orgs/018f3a8c-2b7e-7c31-9f4a-6f0f1c2d3e4b/runs/2026-09-04/018f3a90-11a2-7000-8000-0123456789ab/TC-001/final.png",
+      "contentType": "image/png",
+      "sizeBytes": 84213
+    }
+  ],
+  "startedAt": "2026-09-04T09:15:02Z",
+  "endedAt": "2026-09-04T09:15:09Z",
+  "durationMs": 7000
+}
