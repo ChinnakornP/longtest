@@ -53,6 +53,9 @@ var tenancyTables = map[string]bool{
 	"sessions":       true,
 	"runtime_tokens": true,
 	"pairing_codes":  true,
+	// invites: accepting one is how a user first gets an org_id, so the accept
+	// path looks the row up by token hash alone (LONG-7).
+	"invites": true,
 }
 
 const queriesDir = "queries"

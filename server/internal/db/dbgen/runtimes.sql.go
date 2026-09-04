@@ -14,18 +14,28 @@ import (
 )
 
 const createRuntime = `-- name: CreateRuntime :one
-INSERT INTO runtimes (org_id, name)
-VALUES ($1, $2)
-RETURNING id, org_id, name, version, browsers, agents, last_seen_at, disabled_at, created_at, updated_at
+INSERT INTO runtimes (org_id, name, version, host_info)
+VALUES ($1, $2, $3, COALESCE($4::jsonb, '{}'::jsonb))
+RETURNING id, org_id, name, version, browsers, agents, last_seen_at, disabled_at, created_at, updated_at, host_info
 `
 
 type CreateRuntimeParams struct {
-	OrgID uuid.UUID
-	Name  string
+	OrgID    uuid.UUID
+	Name     string
+	Version  string
+	HostInfo []byte
 }
 
+// The org comes from the redeemed pairing code, never from the daemon's
+// request body. `host_info` is what the machine says about itself at pairing
+// time; the authoritative capability report arrives later in the `hello` frame.
 func (q *Queries) CreateRuntime(ctx context.Context, arg CreateRuntimeParams) (Runtime, error) {
-	row := q.db.QueryRow(ctx, createRuntime, arg.OrgID, arg.Name)
+	row := q.db.QueryRow(ctx, createRuntime,
+		arg.OrgID,
+		arg.Name,
+		arg.Version,
+		arg.HostInfo,
+	)
 	var i Runtime
 	err := row.Scan(
 		&i.ID,
@@ -38,6 +48,7 @@ func (q *Queries) CreateRuntime(ctx context.Context, arg CreateRuntimeParams) (R
 		&i.DisabledAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HostInfo,
 	)
 	return i, err
 }
@@ -60,7 +71,7 @@ func (q *Queries) DeleteRuntime(ctx context.Context, arg DeleteRuntimeParams) (i
 }
 
 const getRuntime = `-- name: GetRuntime :one
-SELECT id, org_id, name, version, browsers, agents, last_seen_at, disabled_at, created_at, updated_at FROM runtimes WHERE org_id = $1 AND id = $2
+SELECT id, org_id, name, version, browsers, agents, last_seen_at, disabled_at, created_at, updated_at, host_info FROM runtimes WHERE org_id = $1 AND id = $2
 `
 
 type GetRuntimeParams struct {
@@ -82,12 +93,13 @@ func (q *Queries) GetRuntime(ctx context.Context, arg GetRuntimeParams) (Runtime
 		&i.DisabledAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HostInfo,
 	)
 	return i, err
 }
 
 const listRuntimes = `-- name: ListRuntimes :many
-SELECT id, org_id, name, version, browsers, agents, last_seen_at, disabled_at, created_at, updated_at,
+SELECT id, org_id, name, version, browsers, agents, last_seen_at, disabled_at, created_at, updated_at, host_info,
        (disabled_at IS NULL
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - $2::interval) AS online
@@ -112,6 +124,7 @@ type ListRuntimesRow struct {
 	DisabledAt pgtype.Timestamptz
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
+	HostInfo   json.RawMessage
 	Online     pgtype.Bool
 }
 
@@ -137,6 +150,7 @@ func (q *Queries) ListRuntimes(ctx context.Context, arg ListRuntimesParams) ([]L
 			&i.DisabledAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.HostInfo,
 			&i.Online,
 		); err != nil {
 			return nil, err
@@ -156,7 +170,7 @@ SET version = $3,
     agents = $5,
     last_seen_at = now()
 WHERE org_id = $1 AND id = $2
-RETURNING id, org_id, name, version, browsers, agents, last_seen_at, disabled_at, created_at, updated_at
+RETURNING id, org_id, name, version, browsers, agents, last_seen_at, disabled_at, created_at, updated_at, host_info
 `
 
 type RecordRuntimeHelloParams struct {
@@ -190,6 +204,7 @@ func (q *Queries) RecordRuntimeHello(ctx context.Context, arg RecordRuntimeHello
 		&i.DisabledAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HostInfo,
 	)
 	return i, err
 }
@@ -198,7 +213,7 @@ const setRuntimeDisabled = `-- name: SetRuntimeDisabled :one
 UPDATE runtimes
 SET disabled_at = CASE WHEN $3::boolean THEN now() ELSE NULL END
 WHERE org_id = $1 AND id = $2
-RETURNING id, org_id, name, version, browsers, agents, last_seen_at, disabled_at, created_at, updated_at
+RETURNING id, org_id, name, version, browsers, agents, last_seen_at, disabled_at, created_at, updated_at, host_info
 `
 
 type SetRuntimeDisabledParams struct {
@@ -221,6 +236,7 @@ func (q *Queries) SetRuntimeDisabled(ctx context.Context, arg SetRuntimeDisabled
 		&i.DisabledAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HostInfo,
 	)
 	return i, err
 }

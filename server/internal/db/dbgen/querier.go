@@ -12,6 +12,10 @@ import (
 )
 
 type Querier interface {
+	// The claim. `accepted_at IS NULL` in the predicate plus the row lock the
+	// UPDATE takes means two concurrent accepts of the same token produce exactly
+	// one winner, with no read-then-write window in between.
+	AcceptInvite(ctx context.Context, arg AcceptInviteParams) (Invite, error)
 	// The run event stream. Delivery from the daemon is at-least-once, so every
 	// write here is idempotent on (run_id, seq).
 	// Returns 1 when the event was new and 0 when it was a redelivery, which is
@@ -49,6 +53,10 @@ type Querier interface {
 	// Seeds a run's whole work list in one statement from the cases it selected,
 	// pinning each to the version that is current right now.
 	CreateExecutionsForRun(ctx context.Context, arg CreateExecutionsForRunParams) ([]Execution, error)
+	// Organization invites. Tenancy layer, like sessions and runtime_tokens: the
+	// accept path is how an org_id is established for the invitee, so it looks the
+	// row up by token hash and cannot take an org_id parameter.
+	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
 	// Tenancy root. `organizations`, `users`, `memberships` and `sessions` are the
 	// tenancy layer itself, so they are outside the org_id-parameter rule that
 	// TestQueriesAreOrgScoped enforces on domain tables: these queries are how an
@@ -59,6 +67,9 @@ type Querier interface {
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	// Runs, and the Postgres-backed job queue they double as.
 	CreateRun(ctx context.Context, arg CreateRunParams) (Run, error)
+	// The org comes from the redeemed pairing code, never from the daemon's
+	// request body. `host_info` is what the machine says about itself at pairing
+	// time; the authoritative capability report arrives later in the `hello` frame.
 	CreateRuntime(ctx context.Context, arg CreateRuntimeParams) (Runtime, error)
 	// Daemon credentials. Tenancy layer, like sessions: the token lookup is how an
 	// org_id is established for a daemon connection, so it cannot take one.
@@ -73,6 +84,8 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteArtifact(ctx context.Context, arg DeleteArtifactParams) (int64, error)
 	DeleteElement(ctx context.Context, arg DeleteElementParams) (int64, error)
+	// Housekeeping: an expired invite can never be accepted again.
+	DeleteExpiredInvites(ctx context.Context, grace pgtype.Interval) (int64, error)
 	DeleteExpiredPairingCodes(ctx context.Context) (int64, error)
 	// Housekeeping: expired rows are useless and this table only grows.
 	DeleteExpiredSessions(ctx context.Context, grace pgtype.Interval) (int64, error)
@@ -103,6 +116,13 @@ type Querier interface {
 	GetExecutionByRunAndCase(ctx context.Context, arg GetExecutionByRunAndCaseParams) (Execution, error)
 	GetFinding(ctx context.Context, arg GetFindingParams) (Finding, error)
 	GetLastRunEventSeq(ctx context.Context, arg GetLastRunEventSeqParams) (int64, error)
+	// The acceptance read. Expiry, revocation and prior acceptance are filtered
+	// here rather than in Go so no caller can forget one of the three.
+	GetLiveInviteByTokenHash(ctx context.Context, tokenHash []byte) (Invite, error)
+	// Redemption needs the org before it can create the runtime the code will be
+	// consumed against, so it reads the live row first. Expiry and prior
+	// consumption are filtered here; ConsumePairingCode is still the atomic claim.
+	GetLivePairingCodeByHash(ctx context.Context, codeHash []byte) (PairingCode, error)
 	// The daemon authentication read. Whatever runtime id the daemon claims in its
 	// frames is ignored; the (org_id, runtime_id) pair on this row is the truth.
 	GetLiveRuntimeTokenByHash(ctx context.Context, tokenHash []byte) (RuntimeToken, error)
@@ -165,6 +185,10 @@ type Querier interface {
 	// per finding would be the N+1 the join table exists to avoid.
 	ListFindingEvidenceForRun(ctx context.Context, arg ListFindingEvidenceForRunParams) ([]ListFindingEvidenceForRunRow, error)
 	ListFindingsForRun(ctx context.Context, arg ListFindingsForRunParams) ([]Finding, error)
+	ListInvites(ctx context.Context, orgID uuid.UUID) ([]Invite, error)
+	// The org's outstanding codes, so the UI can show "a pairing code is waiting"
+	// without ever being able to show the code itself.
+	ListLivePairingCodes(ctx context.Context, orgID uuid.UUID) ([]PairingCode, error)
 	ListMembers(ctx context.Context, orgID uuid.UUID) ([]ListMembersRow, error)
 	// Org picker for a signed-in user; the role comes along so the UI can hide
 	// what the member cannot do.
@@ -202,6 +226,11 @@ type Querier interface {
 	// org-scope-exempt: platform maintenance sweeper, not reachable from a
 	// tenant-facing handler; it never returns row contents, only ids to log.
 	RequeueStaleRuns(ctx context.Context, arg RequeueStaleRunsParams) ([]RequeueStaleRunsRow, error)
+	RevokeInvite(ctx context.Context, arg RevokeInviteParams) (int64, error)
+	// Re-inviting somebody rotates the token instead of leaving two valid ones
+	// outstanding. Run inside the same transaction as CreateInvite, otherwise the
+	// partial unique index rejects the new row.
+	RevokeLiveInvitesForEmail(ctx context.Context, arg RevokeLiveInvitesForEmailParams) (int64, error)
 	RevokeRuntimeToken(ctx context.Context, arg RevokeRuntimeTokenParams) (int64, error)
 	RevokeRuntimeTokensForRuntime(ctx context.Context, arg RevokeRuntimeTokensForRuntimeParams) (int64, error)
 	RevokeSession(ctx context.Context, tokenHash []byte) (int64, error)

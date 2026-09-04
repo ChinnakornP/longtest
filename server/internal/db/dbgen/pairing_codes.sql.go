@@ -93,6 +93,32 @@ func (q *Queries) DeleteExpiredPairingCodes(ctx context.Context) (int64, error) 
 	return result.RowsAffected(), nil
 }
 
+const getLivePairingCodeByHash = `-- name: GetLivePairingCodeByHash :one
+SELECT id, org_id, code_hash, runtime_id, created_by, expires_at, consumed_at, created_at FROM pairing_codes
+WHERE code_hash = $1
+  AND consumed_at IS NULL
+  AND expires_at > now()
+`
+
+// Redemption needs the org before it can create the runtime the code will be
+// consumed against, so it reads the live row first. Expiry and prior
+// consumption are filtered here; ConsumePairingCode is still the atomic claim.
+func (q *Queries) GetLivePairingCodeByHash(ctx context.Context, codeHash []byte) (PairingCode, error) {
+	row := q.db.QueryRow(ctx, getLivePairingCodeByHash, codeHash)
+	var i PairingCode
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.CodeHash,
+		&i.RuntimeID,
+		&i.CreatedBy,
+		&i.ExpiresAt,
+		&i.ConsumedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getPairingCodeByHash = `-- name: GetPairingCodeByHash :one
 SELECT id, org_id, code_hash, runtime_id, created_by, expires_at, consumed_at, created_at FROM pairing_codes WHERE code_hash = $1
 `
@@ -111,4 +137,41 @@ func (q *Queries) GetPairingCodeByHash(ctx context.Context, codeHash []byte) (Pa
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listLivePairingCodes = `-- name: ListLivePairingCodes :many
+SELECT id, org_id, code_hash, runtime_id, created_by, expires_at, consumed_at, created_at FROM pairing_codes
+WHERE org_id = $1 AND consumed_at IS NULL AND expires_at > now()
+ORDER BY created_at DESC
+`
+
+// The org's outstanding codes, so the UI can show "a pairing code is waiting"
+// without ever being able to show the code itself.
+func (q *Queries) ListLivePairingCodes(ctx context.Context, orgID uuid.UUID) ([]PairingCode, error) {
+	rows, err := q.db.Query(ctx, listLivePairingCodes, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PairingCode{}
+	for rows.Next() {
+		var i PairingCode
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.CodeHash,
+			&i.RuntimeID,
+			&i.CreatedBy,
+			&i.ExpiresAt,
+			&i.ConsumedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
