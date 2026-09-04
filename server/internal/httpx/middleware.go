@@ -214,9 +214,10 @@ type CORSConfig struct {
 }
 
 // corsAllowedHeaders is the request-header allowlist. X-Org-ID is on it
-// because it is how the active organization is selected on every call.
+// because it is how the active organization is selected on every call, and
+// Idempotency-Key because POST /runs is retried with one.
 var corsAllowedHeaders = strings.Join([]string{
-	"Content-Type", "X-Org-ID", requestIDHeader,
+	"Content-Type", "X-Org-ID", "Idempotency-Key", requestIDHeader,
 }, ", ")
 
 var corsAllowedMethods = strings.Join([]string{

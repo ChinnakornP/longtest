@@ -29,7 +29,7 @@ func newTestEnv(t *testing.T) *authtest.Env {
 		RequestTimeout: 30 * time.Second,
 	}
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	return authtest.New(t, newAPI(store, logger, cfg))
+	return authtest.New(t, newAPI(store, logger, cfg).Handler)
 }
 
 func TestHealthAndReadiness(t *testing.T) {

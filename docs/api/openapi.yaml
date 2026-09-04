@@ -1,0 +1,1145 @@
+# The REST surface of the AI QA Agent backend.
+#
+# This file is checked against the router by TestOpenAPICoversEveryRoute in
+# server/cmd/server: a route mounted without an entry here, or an entry here
+# with no route, fails the build. Prose conventions (auth, tenancy, roles, the
+# error envelope) live in docs/api.md; this file is the machine-readable half.
+#
+# The two WebSocket endpoints are described under `x-websockets` at the bottom:
+# OpenAPI 3.1 has no way to express a socket, and leaving them out entirely
+# would mean the control plane is the one part of the API with no spec.
+openapi: 3.1.0
+
+info:
+  title: AI QA Agent API
+  version: 1.0.0
+  description: |
+    Backend for the AI QA Agent platform: projects, runs, test cases, runtimes
+    and reports.
+
+    Every request that touches organization data carries `X-Org-ID`, which is
+    the only source of the active organization (ADR-006/ADR-007). A missing,
+    unparsable, unknown or non-member organization is `403`; a resource id
+    belonging to another organization is `404`, because the org-scoped query
+    does not find it.
+
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local development
+
+tags:
+  - name: health
+  - name: auth
+  - name: organizations
+  - name: projects
+  - name: test-cases
+  - name: runs
+  - name: runtimes
+  - name: reports
+
+security:
+  - sessionCookie: []
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness
+      security: []
+      responses:
+        '200':
+          description: The process is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: ok }
+
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness
+      description: Reaches Postgres. A backend that cannot is live but useless.
+      security: []
+      responses:
+        '200':
+          description: The process can serve.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: ready }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/v1/auth/signup:
+    post:
+      tags: [auth]
+      summary: Create an account and its first organization
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12 }
+                name: { type: string }
+                orgName: { type: string }
+      responses:
+        '201':
+          description: Created. Sets the session cookie.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Signed in. Sets the session cookie.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Sign out
+      description: Idempotent. Revoking an unknown or dead session succeeds.
+      responses:
+        '204': { description: Signed out. }
+
+  /api/v1/me:
+    get:
+      tags: [auth]
+      summary: The signed-in user and their organizations
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/orgs:
+    post:
+      tags: [organizations]
+      summary: Create an organization
+      description: Needs a session but no organization; this is how a user who belongs to none gets their first.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Org' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /api/v1/orgs/{orgID}/members:
+    get:
+      tags: [organizations]
+      summary: List members
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/OrgPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items: { $ref: '#/components/schemas/Member' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/orgs/{orgID}/invites:
+    post:
+      tags: [organizations]
+      summary: Invite somebody
+      description: The response is the only place the invite token is ever rendered.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/OrgPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role: { $ref: '#/components/schemas/Role' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InviteWithToken' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+    get:
+      tags: [organizations]
+      summary: List outstanding invites
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/OrgPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invites:
+                    type: array
+                    items: { $ref: '#/components/schemas/Invite' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/orgs/{orgID}/invites/{inviteID}:
+    delete:
+      tags: [organizations]
+      summary: Revoke an invite
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/OrgPath'
+        - name: inviteID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Revoked }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/invites/accept:
+    post:
+      tags: [organizations]
+      summary: Accept an invite
+      description: Not org-scoped; the caller is not a member yet, so the token names the organization.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Joined
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  org: { $ref: '#/components/schemas/Org' }
+                  role: { $ref: '#/components/schemas/Role' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/orgs/{orgID}/runtimes/pair:
+    post:
+      tags: [runtimes]
+      summary: Issue a one-time pairing code
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/OrgPath'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pairingCode: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/runtimes/redeem:
+    post:
+      tags: [runtimes]
+      summary: Exchange a pairing code for a runtime token
+      description: |
+        Unauthenticated by necessity: a fresh daemon holds nothing but the code.
+        The organization comes from the redeemed code and is reported back to
+        the daemon, never taken from it. The token is shown exactly once.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pairingCode, runtimeName]
+              properties:
+                pairingCode: { type: string }
+                runtimeName: { type: string }
+                hostInfo:
+                  type: object
+                  properties:
+                    hostname: { type: string }
+                    os: { type: string }
+                    arch: { type: string }
+      responses:
+        '201':
+          description: Paired
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runtimeId: { type: string, format: uuid }
+                  runtimeToken: { type: string }
+                  runtimeName: { type: string }
+                  orgId: { type: string, format: uuid }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/projects:
+    post:
+      tags: [projects]
+      summary: Create a project
+      description: |
+        Re-submitting the same name and base URL returns the existing project
+        rather than a conflict a user cannot act on. The same name with a
+        different base URL is a real conflict and is a 409.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, baseUrl]
+              properties:
+                name: { type: string, maxLength: 200 }
+                baseUrl: { type: string, format: uri }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+    get:
+      tags: [projects]
+      summary: List projects
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: includeArchived
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+                  total: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/projects/{projectID}:
+    get:
+      tags: [projects]
+      summary: Get a project
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/projects/{projectID}/appmap:
+    get:
+      tags: [projects]
+      summary: The project's Application Map
+      description: |
+        The body is an `application-map@1` document from packages/qa-schema,
+        not a wrapper around one, so the web app and the daemon validate the
+        same bytes against the same contract.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: 'https://qa.local/schema/application-map/1'
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/projects/{projectID}/test-cases:
+    get:
+      tags: [test-cases]
+      summary: List a project's test cases
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/TestCaseStatus' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  testCases:
+                    type: array
+                    items: { $ref: '#/components/schemas/TestCase' }
+                  total: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/test-cases/{testCaseID}:
+    get:
+      tags: [test-cases]
+      summary: Get a test case
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - name: testCaseID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestCase' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [test-cases]
+      summary: Move a test case through review
+      description: |
+        Status is the only field this endpoint accepts. Editing a payload bumps
+        the version and snapshots the old one, which is a different operation
+        with different consequences. Transitions: draft -> approved | archived,
+        approved -> archived | draft, archived -> draft.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - name: testCaseID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/TestCaseStatus' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestCase' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /api/v1/runs:
+    post:
+      tags: [runs]
+      summary: Start a run
+      description: |
+        `runtimeId` is optional. When it is absent the scheduler assigns the run
+        to any online runtime in the organization; when no runtime is available
+        the run stays `queued` rather than failing.
+
+        Send `Idempotency-Key` to make a retry safe: a replay returns the
+        original run with `200` instead of starting a second browser session
+        against the customer's application.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [projectId, mode]
+              properties:
+                projectId: { type: string, format: uuid }
+                runtimeId: { type: [string, 'null'], format: uuid }
+                mode: { $ref: '#/components/schemas/RunMode' }
+                testCaseIds:
+                  type: array
+                  description: Explicit selection for an execute or full run. Absent means every approved case.
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: An Idempotency-Key replayed an earlier request; this is the run it created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '201':
+          description: Queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+    get:
+      tags: [runs]
+      summary: List runs, newest first
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: projectId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items: { $ref: '#/components/schemas/Run' }
+                  total: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/runs/{runID}:
+    get:
+      tags: [runs]
+      summary: Get a run
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/RunPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/runs/{runID}/cancel:
+    post:
+      tags: [runs]
+      summary: Cancel a run
+      description: |
+        Idempotent: cancelling an already-cancelled run succeeds. Cancelling a
+        run that finished on its own is a 409, because that outcome is no longer
+        reachable. The assigned daemon receives a `run.cancel` frame.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/RunPath'
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/runs/{runID}/events:
+    get:
+      tags: [runs]
+      summary: A run's event stream
+      description: |
+        The polling counterpart of the WebSocket. Events are numbered from 0 per
+        run; pass the previous page's `nextSince` to resume. Delivery from the
+        daemon is at-least-once and deduplicated on `(runId, seq)`, so a
+        sequence number appears exactly once here.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/RunPath'
+        - $ref: '#/components/parameters/Limit'
+        - name: since
+          in: query
+          description: Return events after this sequence number. Omit or use -1 for the beginning.
+          schema: { type: integer, format: int64, default: -1 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: '#/components/schemas/RunEvent' }
+                  nextSince: { type: integer, format: int64 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/runs/{runID}/report:
+    get:
+      tags: [reports]
+      summary: A run's full report
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/RunPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/runs/{runID}/artifacts/presign:
+    post:
+      tags: [runs]
+      summary: Mint an upload URL for one artifact
+      description: |
+        Daemon-facing; authenticated with the runtime bearer token, not a
+        session. The returned URL is a presigned S3 PUT for exactly the key
+        asked for, and the key must be inside this run's own
+        `orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/` prefix — a key outside it is a
+        403. See the package doc of `server/internal/artifact` for why the grant
+        is a minting endpoint rather than one prefix-wide signature.
+      security:
+        - runtimeToken: []
+      parameters:
+        - $ref: '#/components/parameters/RunPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key: { type: string, maxLength: 1024 }
+                contentType: { type: string }
+      responses:
+        '201':
+          description: Signed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+                  key: { type: string }
+                  method: { type: string, const: PUT }
+                  expiresAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/runtimes:
+    get:
+      tags: [runtimes]
+      summary: List the organization's runtimes
+      description: |
+        `online` is derived at read time from `lastSeenAt` and from whether a
+        control-plane socket is attached, never stored: a daemon that is killed
+        never gets to write a status column on its way out.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runtimes:
+                    type: array
+                    items: { $ref: '#/components/schemas/Runtime' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: qa_session
+    runtimeToken:
+      type: http
+      scheme: bearer
+      description: The long-lived runtime token issued by /api/v1/runtimes/redeem.
+
+  parameters:
+    OrgHeader:
+      name: X-Org-ID
+      in: header
+      required: true
+      description: The active organization. The only source of an org id on a request.
+      schema: { type: string, format: uuid }
+    OrgPath:
+      name: orgID
+      in: path
+      required: true
+      description: A redundant assertion checked against X-Org-ID (ADR-007).
+      schema: { type: string, format: uuid }
+    ProjectPath:
+      name: projectID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RunPath:
+      name: runID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Not signed in, or the credential is not valid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Signed in, but not allowed — including every X-Org-ID failure.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No such row, or it belongs to another organization.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: The request is well formed but the current state refuses it.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationFailed:
+      description: The JSON parsed; the values are not acceptable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unavailable:
+      description: A dependency this route needs is not configured or not reachable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Internal:
+      description: Unexpected failure. The cause is logged with the request id and never rendered.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [bad_request, validation_failed, unauthorized, forbidden, not_found,
+                     method_not_allowed, conflict, unsupported_media_type, payload_too_large,
+                     rate_limited, internal, unavailable, timeout]
+            message: { type: string }
+            details: { type: object }
+
+    Role:
+      type: string
+      enum: [viewer, member, admin, owner]
+
+    Org:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+
+    Me:
+      type: object
+      properties:
+        user:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string, format: email }
+            name: { type: string }
+        orgs:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Org'
+              - type: object
+                properties:
+                  role: { $ref: '#/components/schemas/Role' }
+
+    Member:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        joinedAt: { type: string, format: date-time }
+
+    Invite:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/Role' }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    InviteWithToken:
+      allOf:
+        - $ref: '#/components/schemas/Invite'
+        - type: object
+          properties:
+            token:
+              type: string
+              description: Shown once. No endpoint returns it again.
+
+    Project:
+      type: object
+      required: [id, name, baseUrl, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        baseUrl: { type: string, format: uri }
+        archivedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    TestCaseStatus:
+      type: string
+      enum: [draft, approved, archived]
+
+    TestCase:
+      type: object
+      required: [id, projectId, ref, name, priority, category, status, version, payload]
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        ref: { type: string, description: 'Human-facing handle inside a project, e.g. TC-001.' }
+        name: { type: string }
+        priority: { type: string, enum: [critical, high, medium, low] }
+        category: { type: string, enum: [functional, validation, navigation, ui_behavior, error_handling] }
+        status: { $ref: '#/components/schemas/TestCaseStatus' }
+        version: { type: integer }
+        sourceRunId: { type: string, format: uuid }
+        payload:
+          description: The executable definition, a `test-case@1` document, passed through verbatim.
+          $ref: 'https://qa.local/schema/test-case/1'
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    RunMode:
+      type: string
+      enum: [discover, plan, execute, full]
+
+    RunStatus:
+      type: string
+      enum: [queued, assigned, running, passed, failed, cancelled, error]
+
+    Run:
+      type: object
+      required: [id, projectId, mode, status, phase, counters, attempts, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        runtimeId: { type: [string, 'null'], format: uuid }
+        mode: { $ref: '#/components/schemas/RunMode' }
+        status: { $ref: '#/components/schemas/RunStatus' }
+        phase:
+          type: string
+          description: Free-form progress label. Not an enum, because the pipeline grows steps faster than a migration can follow.
+        counters:
+          type: object
+          properties:
+            total: { type: integer }
+            passed: { type: integer }
+            failed: { type: integer }
+            skipped: { type: integer }
+            errored: { type: integer }
+        error:
+          type: object
+          description: A domain error, never a driver message.
+          properties:
+            code: { type: string }
+            message: { type: string }
+        attempts: { type: integer }
+        createdAt: { type: string, format: date-time }
+        assignedAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+
+    RunEvent:
+      type: object
+      required: [seq, phase, level, code, message, data, ts]
+      properties:
+        seq: { type: integer, format: int64 }
+        phase: { type: string }
+        level: { type: string, enum: [debug, info, warn, error] }
+        code:
+          type: string
+          description: Machine-readable event code. The UI switches on this, never on message.
+        message: { type: string }
+        data: { type: object }
+        ts: { type: string, format: date-time }
+
+    Runtime:
+      type: object
+      required: [id, name, online, version, browsers, agents, hostInfo, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        online: { type: boolean }
+        version: { type: string }
+        lastSeenAt: { type: string, format: date-time }
+        disabledAt: { type: string, format: date-time }
+        browsers:
+          type: array
+          items: { type: string, enum: [chromium, firefox, webkit] }
+        agents:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string, enum: [claude, opencode, antigravity] }
+              version: { type: string }
+              ok: { type: boolean }
+              error: { type: string }
+        hostInfo: { type: object }
+        createdAt: { type: string, format: date-time }
+
+    Artifact:
+      type: object
+      required: [id, kind, name, contentType, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [screenshot, video, trace, network, console, dom, report] }
+        name: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        sha256: { type: string }
+        url:
+          type: string
+          format: uri
+          description: A presigned GET, minted per request. Absent when object storage is not configured.
+        urlExpiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    Report:
+      type: object
+      required: [run, executions, findings, artifacts]
+      properties:
+        run: { $ref: '#/components/schemas/Run' }
+        executions:
+          type: array
+          items:
+            type: object
+            required: [id, testCaseId, testCaseRef, result, steps, assertions, artifacts]
+            properties:
+              id: { type: string, format: uuid }
+              testCaseId: { type: string, format: uuid }
+              testCaseRef: { type: string }
+              name: { type: string }
+              priority: { type: string }
+              category: { type: string }
+              testCaseVersion: { type: integer }
+              result: { type: string, enum: [pending, running, pass, fail, skipped, error] }
+              failureClass: { $ref: '#/components/schemas/FailureClass' }
+              errorMessage: { type: string }
+              durationMs: { type: integer }
+              startedAt: { type: string, format: date-time }
+              finishedAt: { type: string, format: date-time }
+              steps:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    index: { type: integer }
+                    action: { type: string }
+                    result: { type: string }
+                    unstable: { type: boolean }
+                    errorMessage: { type: string }
+                    durationMs: { type: integer }
+                    target: { type: object }
+              assertions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    index: { type: integer }
+                    type: { type: string }
+                    status: { type: string }
+                    expected: { type: string }
+                    actual: { type: string }
+                    message: { type: string }
+              artifacts:
+                type: array
+                items: { $ref: '#/components/schemas/Artifact' }
+        findings:
+          type: array
+          items:
+            type: object
+            required: [id, failureClass, rootCause, confidence, evidence]
+            properties:
+              id: { type: string, format: uuid }
+              executionId: { type: string, format: uuid }
+              testCaseId: { type: string, format: uuid }
+              stepIndex: { type: integer }
+              failureClass: { $ref: '#/components/schemas/FailureClass' }
+              summary: { type: string }
+              rootCause: { type: string }
+              confidence: { type: number, minimum: 0, maximum: 1 }
+              suggestedFix: { type: string }
+              analyzedBy:
+                type: object
+                properties:
+                  provider: { type: string, enum: [claude, opencode, antigravity] }
+                  version: { type: string }
+              evidence:
+                type: array
+                items: { $ref: '#/components/schemas/Artifact' }
+              createdAt: { type: string, format: date-time }
+        artifacts:
+          type: array
+          description: Run-level evidence that belongs to no single execution.
+          items: { $ref: '#/components/schemas/Artifact' }
+
+    FailureClass:
+      type: string
+      enum: [PRODUCT_BUG, TEST_BUG, ENVIRONMENT_ERROR, NETWORK_ERROR, AUTHENTICATION_ERROR, TIMEOUT, UNKNOWN]
+
+# OpenAPI 3.1 cannot describe a WebSocket, and leaving the control plane out
+# would make it the one part of the API with no spec. Both sockets are listed
+# here with the same route keys the router mounts, which is what lets the
+# coverage test check them alongside the REST paths.
+x-websockets:
+  GET /api/v1/ws:
+    summary: A browser's read-only view of one run
+    security:
+      - sessionCookie: []
+    parameters:
+      - name: runId
+        in: query
+        required: true
+        schema: { type: string, format: uuid }
+      - name: orgId
+        in: query
+        required: false
+        description: |
+          The active organization. The native WebSocket API cannot set a
+          request header, so X-Org-ID is unreachable here; this parameter is
+          copied into that header before the membership check runs, and it is
+          the only place in the API where a query string can become an org id.
+        schema: { type: string, format: uuid }
+      - name: since
+        in: query
+        required: false
+        description: Resume after this event sequence. The backlog is replayed before anything live.
+        schema: { type: integer, format: int64 }
+    frames:
+      run.snapshot: The run as it stands, sent first, with the highest stored `lastSeq`.
+      run.event: One run event, in sequence order.
+      run.status: The run's status, phase or counters changed.
+    close:
+      1013: The client fell behind and its stream would have a hole. Reconnect with ?since.
+
+  GET /api/v1/daemon:
+    summary: The runtime control plane
+    security:
+      - runtimeToken: []
+    description: |
+      One outbound socket per runtime (ADR-002). Every frame is a
+      `daemon-envelope@1` document, validated in both directions. The
+      organization and the runtime come from the token and are never read off
+      the wire.
+    framesIn: [hello, heartbeat, run.event, run.result]
+    framesOut: [run.assign, run.cancel]

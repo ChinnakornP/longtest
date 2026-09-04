@@ -16,6 +16,7 @@ agree on. One file per decision, named `NNNN-<slug>.md`.
 | [006](0006-multi-tenant-from-day-one.md)           | Multi-tenant from day one: org/user/membership, `X-Org-ID`, org-scoped queries | Accepted |
 | [007](0007-org-id-in-path-is-an-assertion.md)      | An org id in a path is an assertion, never a source (refines ADR-006)        | Accepted |
 | [008](0008-web-ships-no-backend.md)                | `apps/web` ships no backend: no `/api/**` route handler survives a production build | Accepted |
+| [009](0009-artifact-upload-is-a-minting-endpoint.md) | Artifact upload is a per-object minting endpoint; S3 cannot presign a prefix (refines ADR-002) | Accepted |
 
 ## When to write one
 

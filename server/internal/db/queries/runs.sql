@@ -143,3 +143,83 @@ WHERE status IN ('assigned', 'running')
   AND heartbeat_at < now() - sqlc.arg(stale_after)::interval
   AND attempts >= sqlc.arg(max_attempts)::integer
 RETURNING id, org_id;
+
+-- The scheduler's claim. ClaimQueuedRun above pins to a runtime that was named
+-- at enqueue time; this one is what an idle daemon asks for, so it also picks
+-- up runs that were created without a runtime (`runtime_id IS NULL`) and
+-- stamps itself onto the row it wins.
+--
+-- Same FOR UPDATE SKIP LOCKED as ClaimQueuedRun and for the same reason: the
+-- work item is a row we already have to read, and SKIP LOCKED lets every
+-- connected daemon poll concurrently while each still gets a distinct run. An
+-- advisory lock would need a prior lookup to decide WHICH key to lock, which
+-- reintroduces the race it is meant to remove.
+-- name: ClaimQueuedRunForRuntime :one
+UPDATE runs AS c
+SET status = 'assigned',
+    runtime_id = sqlc.arg(runtime_id),
+    attempts = c.attempts + 1,
+    assigned_at = now(),
+    heartbeat_at = now()
+WHERE c.org_id = sqlc.arg(org_id)
+  -- One run at a time per runtime: a daemon drives one browser session, and a
+  -- second assignment would have it interleave two runs against the customer's
+  -- application. The guard is inside the claim statement rather than a check
+  -- the scheduler makes first, so two schedulers cannot both read "idle" and
+  -- both assign.
+  AND NOT EXISTS (
+    SELECT 1 FROM runs busy
+    WHERE busy.org_id = sqlc.arg(org_id)
+      AND busy.runtime_id = sqlc.arg(runtime_id)
+      AND busy.status IN ('assigned', 'running')
+  )
+  AND c.id = (
+    SELECT r.id
+    FROM runs r
+    WHERE r.org_id = sqlc.arg(org_id)
+      AND (r.runtime_id IS NULL OR r.runtime_id = sqlc.arg(runtime_id))
+      AND r.status = 'queued'
+    ORDER BY r.created_at
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING c.*;
+
+-- Undo of a claim whose `run.assign` never made it onto the wire (the daemon
+-- disconnected between the claim and the send). Returning the run to the queue
+-- immediately is what keeps assignment latency at one scheduler tick instead of
+-- one lease expiry. `attempts` is deliberately NOT decremented: a runtime that
+-- keeps dropping mid-assign must still exhaust its attempts.
+-- name: ReleaseClaimedRun :execrows
+UPDATE runs
+SET status = 'queued', assigned_at = NULL, heartbeat_at = NULL
+WHERE org_id = $1 AND id = $2 AND status = 'assigned';
+
+-- Belongs-to check for the daemon control plane: a `run.event` frame is only
+-- accepted for a run in the token's own organization that is assigned to the
+-- token's own runtime. Both halves are in the WHERE clause, so a frame that
+-- names another tenant's run reads as "no such run" rather than as a
+-- permission decision made in Go.
+-- name: GetRunForRuntime :one
+SELECT * FROM runs
+WHERE org_id = $1 AND id = $2 AND runtime_id = sqlc.arg(runtime_id);
+
+-- Runs a daemon is still expected to be working on. Used when a control-plane
+-- connection drops so the runs it held can be dealt with immediately rather
+-- than waiting out the heartbeat lease.
+-- name: ListInFlightRunsForRuntime :many
+SELECT * FROM runs
+WHERE org_id = $1 AND runtime_id = $2 AND status IN ('assigned', 'running')
+ORDER BY created_at;
+
+-- Lease refresh for everything a daemon says it is still working on, in one
+-- statement. The runtime is bound as a parameter, so a heartbeat can only
+-- extend the lease on runs that daemon actually holds — a frame listing another
+-- runtime's run in the same organization updates nothing.
+-- name: HeartbeatRunsForRuntime :execrows
+UPDATE runs
+SET heartbeat_at = now()
+WHERE org_id = $1
+  AND runtime_id = sqlc.arg(runtime_id)
+  AND id = ANY (sqlc.arg(ids)::uuid[])
+  AND status IN ('assigned', 'running');

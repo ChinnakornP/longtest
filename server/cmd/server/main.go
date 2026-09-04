@@ -1,22 +1,19 @@
 // Command server is the HTTP/WebSocket backend of the AI QA platform.
 //
-// It currently serves the authentication and tenancy surface (LONG-7):
+// The full route-by-route reference is docs/api/openapi.yaml, which a test in
+// this package checks against the router. In outline:
 //
-//	POST   /api/v1/auth/signup
-//	POST   /api/v1/auth/login
-//	POST   /api/v1/auth/logout
-//	GET    /api/v1/me
-//	POST   /api/v1/orgs
-//	GET    /api/v1/orgs/{orgID}/members
-//	POST   /api/v1/orgs/{orgID}/invites
-//	GET    /api/v1/orgs/{orgID}/invites
-//	DELETE /api/v1/orgs/{orgID}/invites/{inviteID}
-//	POST   /api/v1/invites/accept
-//	POST   /api/v1/orgs/{orgID}/runtimes/pair
-//	POST   /api/v1/runtimes/redeem
+//	auth/tenancy   /api/v1/auth/*, /api/v1/me, /api/v1/orgs/**, /api/v1/invites/*
+//	projects       /api/v1/projects[/{id}[/appmap|/test-cases]]
+//	test cases     /api/v1/test-cases/{id}            GET, PATCH
+//	runs           /api/v1/runs[/{id}[/cancel|/events|/report|/artifacts/presign]]
+//	runtimes       /api/v1/runtimes, /api/v1/runtimes/redeem
+//	streams        WS /api/v1/ws?runId=…   browser, read-only
+//	               WS /api/v1/daemon       runtime control plane
 //
-// The project, run and WebSocket control-plane routes (T08/T09) mount onto the
-// same router and behind the same middleware.
+// The process runs one background loop next to the server: the run scheduler,
+// which claims queued runs and hands them to connected daemons. Both stop on
+// the same signal.
 package main
 
 import (
@@ -68,9 +65,20 @@ func run(ctx context.Context) error {
 
 	store := db.NewStore(pool)
 
+	assembled := newAPI(store, logger, cfg)
+
+	// The scheduler is the process's only background loop. It is started with
+	// the process context, so it stops when a signal arrives and there is no
+	// path where it outlives the server.
+	schedulerDone := make(chan struct{})
+	go func() {
+		defer close(schedulerDone)
+		assembled.Scheduler.Run(ctx)
+	}()
+
 	srv := &http.Server{
 		Addr:    cfg.Addr,
-		Handler: newAPI(store, logger, cfg),
+		Handler: assembled.Handler,
 		// Slowloris protection: a client that opens a connection and never
 		// finishes its headers must not hold a goroutine indefinitely.
 		ReadHeaderTimeout: 10 * time.Second,
@@ -80,6 +88,10 @@ func run(ctx context.Context) error {
 		// per-request Timeout middleware bounds the REST handlers instead.
 		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
+	// A WebSocket is a hijacked connection, which Shutdown neither waits for
+	// nor closes. Without this the daemons would be left holding sockets to a
+	// process that is exiting.
+	srv.RegisterOnShutdown(assembled.Sockets.Shutdown)
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -109,5 +121,6 @@ func run(ctx context.Context) error {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shut down: %w", err)
 	}
+	<-schedulerDone
 	return <-serveErr
 }

@@ -337,6 +337,112 @@ func (q *Queries) ListTestCases(ctx context.Context, arg ListTestCasesParams) ([
 	return items, nil
 }
 
+const listTestCasesByIDs = `-- name: ListTestCasesByIDs :many
+SELECT id, org_id, project_id, ref, name, priority, category, status, payload, current_version, source_run_id, created_at, updated_at FROM test_cases
+WHERE org_id = $1
+  AND project_id = $2
+  AND id = ANY ($3::uuid[])
+ORDER BY priority, ref
+`
+
+type ListTestCasesByIDsParams struct {
+	OrgID     uuid.UUID
+	ProjectID uuid.UUID
+	Ids       []uuid.UUID
+}
+
+// Resolves an explicit test-case selection in one statement.
+//
+// Both the organization and the project are bound, so a selection that names a
+// case from another project (or another tenant) simply returns fewer rows than
+// were asked for, and the caller reports that as "not found" without ever
+// learning which id was the bad one.
+func (q *Queries) ListTestCasesByIDs(ctx context.Context, arg ListTestCasesByIDsParams) ([]TestCase, error) {
+	rows, err := q.db.Query(ctx, listTestCasesByIDs, arg.OrgID, arg.ProjectID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TestCase{}
+	for rows.Next() {
+		var i TestCase
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.Ref,
+			&i.Name,
+			&i.Priority,
+			&i.Category,
+			&i.Status,
+			&i.Payload,
+			&i.CurrentVersion,
+			&i.SourceRunID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTestCasesByRefs = `-- name: ListTestCasesByRefs :many
+SELECT id, org_id, project_id, ref, name, priority, category, status, payload, current_version, source_run_id, created_at, updated_at FROM test_cases
+WHERE org_id = $1
+  AND project_id = $2
+  AND ref = ANY ($3::text[])
+`
+
+type ListTestCasesByRefsParams struct {
+	OrgID     uuid.UUID
+	ProjectID uuid.UUID
+	Refs      []string
+}
+
+// Resolves the case refs a result frame names, in one statement.
+//
+// A run.result carries up to 500 executions and as many findings, each naming
+// its case by ref ("TC-001"); looking them up one at a time is the N+1 this
+// replaces, and it would run inside the ingest transaction.
+func (q *Queries) ListTestCasesByRefs(ctx context.Context, arg ListTestCasesByRefsParams) ([]TestCase, error) {
+	rows, err := q.db.Query(ctx, listTestCasesByRefs, arg.OrgID, arg.ProjectID, arg.Refs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TestCase{}
+	for rows.Next() {
+		var i TestCase
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.Ref,
+			&i.Name,
+			&i.Priority,
+			&i.Category,
+			&i.Status,
+			&i.Payload,
+			&i.CurrentVersion,
+			&i.SourceRunID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setTestCaseStatus = `-- name: SetTestCaseStatus :one
 UPDATE test_cases SET status = $3
 WHERE org_id = $1 AND id = $2

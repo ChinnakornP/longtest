@@ -509,6 +509,69 @@ func (q *Queries) ListRecentExecutionsForTestCase(ctx context.Context, arg ListR
 	return items, nil
 }
 
+const listTestCaseDocumentsForRun = `-- name: ListTestCaseDocumentsForRun :many
+SELECT tc.id, tc.ref, tc.name, tc.priority, tc.category,
+       e.test_case_version, tcv.payload
+FROM executions e
+JOIN test_cases tc
+  ON tc.id = e.test_case_id AND tc.org_id = e.org_id
+JOIN test_case_versions tcv
+  ON tcv.test_case_id = e.test_case_id
+ AND tcv.version = e.test_case_version
+ AND tcv.org_id = e.org_id
+WHERE e.org_id = $1 AND e.run_id = $2
+ORDER BY tc.priority, tc.ref
+`
+
+type ListTestCaseDocumentsForRunParams struct {
+	OrgID uuid.UUID
+	RunID uuid.UUID
+}
+
+type ListTestCaseDocumentsForRunRow struct {
+	ID              uuid.UUID
+	Ref             string
+	Name            string
+	Priority        TestPriority
+	Category        TestCategory
+	TestCaseVersion int32
+	Payload         json.RawMessage
+}
+
+// The exact test-case documents a run was assigned to execute.
+//
+// It joins through test_case_versions rather than test_cases so the daemon is
+// handed the definition the execution row was PINNED to at enqueue time. A case
+// edited between "start run" and "daemon picks it up" must not change what runs,
+// or the report would describe a document that never executed.
+func (q *Queries) ListTestCaseDocumentsForRun(ctx context.Context, arg ListTestCaseDocumentsForRunParams) ([]ListTestCaseDocumentsForRunRow, error) {
+	rows, err := q.db.Query(ctx, listTestCaseDocumentsForRun, arg.OrgID, arg.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTestCaseDocumentsForRunRow{}
+	for rows.Next() {
+		var i ListTestCaseDocumentsForRunRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ref,
+			&i.Name,
+			&i.Priority,
+			&i.Category,
+			&i.TestCaseVersion,
+			&i.Payload,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markExecutionRunning = `-- name: MarkExecutionRunning :one
 UPDATE executions
 SET result = 'running', started_at = coalesce(started_at, now())

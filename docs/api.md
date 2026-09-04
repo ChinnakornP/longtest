@@ -1,9 +1,14 @@
 # REST API reference
 
-The authentication and tenancy surface, as implemented in `server/internal/auth`
-and `server/internal/org`. Every route added later (projects, runs, test cases)
-inherits the conventions below; this file is the reference the ADR index points
-to for "API shape".
+The conventions every route in this API follows — authentication, tenancy,
+roles, the error envelope — with the auth and organization surface as the
+worked example.
+
+**The route-by-route reference is [`api/openapi.yaml`](api/openapi.yaml).** It
+covers every endpoint including projects, runs, test cases, runtimes, reports
+and both WebSockets, and it is checked against the router by
+`TestOpenAPICoversEveryMountedRoute`: a route mounted without an entry there, or
+an entry with no route, fails the build.
 
 Base path: `/api/v1`.
 

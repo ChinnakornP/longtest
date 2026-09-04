@@ -38,6 +38,17 @@ type Querier interface {
 	// The inner SELECT is what SKIP LOCKED applies to; the outer UPDATE then only
 	// touches the one row this worker won.
 	ClaimQueuedRun(ctx context.Context, arg ClaimQueuedRunParams) (Run, error)
+	// The scheduler's claim. ClaimQueuedRun above pins to a runtime that was named
+	// at enqueue time; this one is what an idle daemon asks for, so it also picks
+	// up runs that were created without a runtime (`runtime_id IS NULL`) and
+	// stamps itself onto the row it wins.
+	//
+	// Same FOR UPDATE SKIP LOCKED as ClaimQueuedRun and for the same reason: the
+	// work item is a row we already have to read, and SKIP LOCKED lets every
+	// connected daemon poll concurrently while each still gets a distinct run. An
+	// advisory lock would need a prior lookup to decide WHICH key to lock, which
+	// reintroduces the race it is meant to remove.
+	ClaimQueuedRunForRuntime(ctx context.Context, arg ClaimQueuedRunForRuntimeParams) (Run, error)
 	// Redemption. The UPDATE is the claim: `consumed_at IS NULL` in the predicate
 	// plus the row lock the UPDATE takes means two daemons racing on the same code
 	// produce exactly one winner, with no read-then-write window in between.
@@ -146,6 +157,12 @@ type Querier interface {
 	// Idempotency-Key gets its original run back instead of a second browser
 	// session against the customer's application.
 	GetRunByIdempotencyKey(ctx context.Context, arg GetRunByIdempotencyKeyParams) (Run, error)
+	// Belongs-to check for the daemon control plane: a `run.event` frame is only
+	// accepted for a run in the token's own organization that is assigned to the
+	// token's own runtime. Both halves are in the WHERE clause, so a frame that
+	// names another tenant's run reads as "no such run" rather than as a
+	// permission decision made in Go.
+	GetRunForRuntime(ctx context.Context, arg GetRunForRuntimeParams) (Run, error)
 	// Read-modify-write on a single run (status transitions, counter fixups) must
 	// go through this so two writers cannot interleave.
 	GetRunForUpdate(ctx context.Context, arg GetRunForUpdateParams) (Run, error)
@@ -159,6 +176,11 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetWorkflow(ctx context.Context, arg GetWorkflowParams) (Workflow, error)
 	HeartbeatRun(ctx context.Context, arg HeartbeatRunParams) (int64, error)
+	// Lease refresh for everything a daemon says it is still working on, in one
+	// statement. The runtime is bound as a parameter, so a heartbeat can only
+	// extend the lease on runs that daemon actually holds — a frame listing another
+	// runtime's run in the same organization updates nothing.
+	HeartbeatRunsForRuntime(ctx context.Context, arg HeartbeatRunsForRuntimeParams) (int64, error)
 	LinkFindingEvidence(ctx context.Context, arg LinkFindingEvidenceParams) (int64, error)
 	// The regression suite: what an `execute` run without an explicit selection
 	// runs. One query, ordered so the report reads by priority.
@@ -185,6 +207,10 @@ type Querier interface {
 	// per finding would be the N+1 the join table exists to avoid.
 	ListFindingEvidenceForRun(ctx context.Context, arg ListFindingEvidenceForRunParams) ([]ListFindingEvidenceForRunRow, error)
 	ListFindingsForRun(ctx context.Context, arg ListFindingsForRunParams) ([]Finding, error)
+	// Runs a daemon is still expected to be working on. Used when a control-plane
+	// connection drops so the runs it held can be dealt with immediately rather
+	// than waiting out the heartbeat lease.
+	ListInFlightRunsForRuntime(ctx context.Context, arg ListInFlightRunsForRuntimeParams) ([]Run, error)
 	ListInvites(ctx context.Context, orgID uuid.UUID) ([]Invite, error)
 	// The org's outstanding codes, so the UI can show "a pairing code is waiting"
 	// without ever being able to show the code itself.
@@ -209,8 +235,28 @@ type Querier interface {
 	// report these rather than deleting them, because live test cases may still
 	// reference them.
 	ListStalePages(ctx context.Context, arg ListStalePagesParams) ([]Page, error)
+	// The exact test-case documents a run was assigned to execute.
+	//
+	// It joins through test_case_versions rather than test_cases so the daemon is
+	// handed the definition the execution row was PINNED to at enqueue time. A case
+	// edited between "start run" and "daemon picks it up" must not change what runs,
+	// or the report would describe a document that never executed.
+	ListTestCaseDocumentsForRun(ctx context.Context, arg ListTestCaseDocumentsForRunParams) ([]ListTestCaseDocumentsForRunRow, error)
 	ListTestCaseVersions(ctx context.Context, arg ListTestCaseVersionsParams) ([]TestCaseVersion, error)
 	ListTestCases(ctx context.Context, arg ListTestCasesParams) ([]TestCase, error)
+	// Resolves an explicit test-case selection in one statement.
+	//
+	// Both the organization and the project are bound, so a selection that names a
+	// case from another project (or another tenant) simply returns fewer rows than
+	// were asked for, and the caller reports that as "not found" without ever
+	// learning which id was the bad one.
+	ListTestCasesByIDs(ctx context.Context, arg ListTestCasesByIDsParams) ([]TestCase, error)
+	// Resolves the case refs a result frame names, in one statement.
+	//
+	// A run.result carries up to 500 executions and as many findings, each naming
+	// its case by ref ("TC-001"); looking them up one at a time is the N+1 this
+	// replaces, and it would run inside the ingest transaction.
+	ListTestCasesByRefs(ctx context.Context, arg ListTestCasesByRefsParams) ([]TestCase, error)
 	ListWorkflows(ctx context.Context, arg ListWorkflowsParams) ([]Workflow, error)
 	MarkExecutionRunning(ctx context.Context, arg MarkExecutionRunningParams) (Execution, error)
 	MarkRunRunning(ctx context.Context, arg MarkRunRunningParams) (Run, error)
@@ -221,6 +267,12 @@ type Querier interface {
 	// Recomputes the counters from the executions that actually exist, so a
 	// dropped or duplicated result frame cannot leave the summary lying.
 	RefreshRunCounters(ctx context.Context, arg RefreshRunCountersParams) (Run, error)
+	// Undo of a claim whose `run.assign` never made it onto the wire (the daemon
+	// disconnected between the claim and the send). Returning the run to the queue
+	// immediately is what keeps assignment latency at one scheduler tick instead of
+	// one lease expiry. `attempts` is deliberately NOT decremented: a runtime that
+	// keeps dropping mid-assign must still exhaust its attempts.
+	ReleaseClaimedRun(ctx context.Context, arg ReleaseClaimedRunParams) (int64, error)
 	// Requeue sweep for runs whose daemon stopped heart-beating. Runs across every
 	// organization by design.
 	// org-scope-exempt: platform maintenance sweeper, not reachable from a

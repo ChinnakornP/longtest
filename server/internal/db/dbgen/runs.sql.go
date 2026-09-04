@@ -122,6 +122,84 @@ func (q *Queries) ClaimQueuedRun(ctx context.Context, arg ClaimQueuedRunParams) 
 	return i, err
 }
 
+const claimQueuedRunForRuntime = `-- name: ClaimQueuedRunForRuntime :one
+UPDATE runs AS c
+SET status = 'assigned',
+    runtime_id = $1,
+    attempts = c.attempts + 1,
+    assigned_at = now(),
+    heartbeat_at = now()
+WHERE c.org_id = $2
+  -- One run at a time per runtime: a daemon drives one browser session, and a
+  -- second assignment would have it interleave two runs against the customer's
+  -- application. The guard is inside the claim statement rather than a check
+  -- the scheduler makes first, so two schedulers cannot both read "idle" and
+  -- both assign.
+  AND NOT EXISTS (
+    SELECT 1 FROM runs busy
+    WHERE busy.org_id = $2
+      AND busy.runtime_id = $1
+      AND busy.status IN ('assigned', 'running')
+  )
+  AND c.id = (
+    SELECT r.id
+    FROM runs r
+    WHERE r.org_id = $2
+      AND (r.runtime_id IS NULL OR r.runtime_id = $1)
+      AND r.status = 'queued'
+    ORDER BY r.created_at
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING c.id, c.org_id, c.project_id, c.runtime_id, c.mode, c.status, c.phase, c.idempotency_key, c.attempts, c.heartbeat_at, c.total_count, c.passed_count, c.failed_count, c.skipped_count, c.error_count, c.error_code, c.error_message, c.created_by, c.assigned_at, c.started_at, c.finished_at, c.created_at, c.updated_at
+`
+
+type ClaimQueuedRunForRuntimeParams struct {
+	RuntimeID uuid.NullUUID
+	OrgID     uuid.UUID
+}
+
+// The scheduler's claim. ClaimQueuedRun above pins to a runtime that was named
+// at enqueue time; this one is what an idle daemon asks for, so it also picks
+// up runs that were created without a runtime (`runtime_id IS NULL`) and
+// stamps itself onto the row it wins.
+//
+// Same FOR UPDATE SKIP LOCKED as ClaimQueuedRun and for the same reason: the
+// work item is a row we already have to read, and SKIP LOCKED lets every
+// connected daemon poll concurrently while each still gets a distinct run. An
+// advisory lock would need a prior lookup to decide WHICH key to lock, which
+// reintroduces the race it is meant to remove.
+func (q *Queries) ClaimQueuedRunForRuntime(ctx context.Context, arg ClaimQueuedRunForRuntimeParams) (Run, error) {
+	row := q.db.QueryRow(ctx, claimQueuedRunForRuntime, arg.RuntimeID, arg.OrgID)
+	var i Run
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.ProjectID,
+		&i.RuntimeID,
+		&i.Mode,
+		&i.Status,
+		&i.Phase,
+		&i.IdempotencyKey,
+		&i.Attempts,
+		&i.HeartbeatAt,
+		&i.TotalCount,
+		&i.PassedCount,
+		&i.FailedCount,
+		&i.SkippedCount,
+		&i.ErrorCount,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.CreatedBy,
+		&i.AssignedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const countRuns = `-- name: CountRuns :one
 SELECT count(*) FROM runs
 WHERE org_id = $1
@@ -384,6 +462,53 @@ func (q *Queries) GetRunByIdempotencyKey(ctx context.Context, arg GetRunByIdempo
 	return i, err
 }
 
+const getRunForRuntime = `-- name: GetRunForRuntime :one
+SELECT id, org_id, project_id, runtime_id, mode, status, phase, idempotency_key, attempts, heartbeat_at, total_count, passed_count, failed_count, skipped_count, error_count, error_code, error_message, created_by, assigned_at, started_at, finished_at, created_at, updated_at FROM runs
+WHERE org_id = $1 AND id = $2 AND runtime_id = $3
+`
+
+type GetRunForRuntimeParams struct {
+	OrgID     uuid.UUID
+	ID        uuid.UUID
+	RuntimeID uuid.NullUUID
+}
+
+// Belongs-to check for the daemon control plane: a `run.event` frame is only
+// accepted for a run in the token's own organization that is assigned to the
+// token's own runtime. Both halves are in the WHERE clause, so a frame that
+// names another tenant's run reads as "no such run" rather than as a
+// permission decision made in Go.
+func (q *Queries) GetRunForRuntime(ctx context.Context, arg GetRunForRuntimeParams) (Run, error) {
+	row := q.db.QueryRow(ctx, getRunForRuntime, arg.OrgID, arg.ID, arg.RuntimeID)
+	var i Run
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.ProjectID,
+		&i.RuntimeID,
+		&i.Mode,
+		&i.Status,
+		&i.Phase,
+		&i.IdempotencyKey,
+		&i.Attempts,
+		&i.HeartbeatAt,
+		&i.TotalCount,
+		&i.PassedCount,
+		&i.FailedCount,
+		&i.SkippedCount,
+		&i.ErrorCount,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.CreatedBy,
+		&i.AssignedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getRunForUpdate = `-- name: GetRunForUpdate :one
 SELECT id, org_id, project_id, runtime_id, mode, status, phase, idempotency_key, attempts, heartbeat_at, total_count, passed_count, failed_count, skipped_count, error_count, error_code, error_message, created_by, assigned_at, started_at, finished_at, created_at, updated_at FROM runs WHERE org_id = $1 AND id = $2 FOR UPDATE
 `
@@ -442,6 +567,91 @@ func (q *Queries) HeartbeatRun(ctx context.Context, arg HeartbeatRunParams) (int
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const heartbeatRunsForRuntime = `-- name: HeartbeatRunsForRuntime :execrows
+UPDATE runs
+SET heartbeat_at = now()
+WHERE org_id = $1
+  AND runtime_id = $2
+  AND id = ANY ($3::uuid[])
+  AND status IN ('assigned', 'running')
+`
+
+type HeartbeatRunsForRuntimeParams struct {
+	OrgID     uuid.UUID
+	RuntimeID uuid.NullUUID
+	Ids       []uuid.UUID
+}
+
+// Lease refresh for everything a daemon says it is still working on, in one
+// statement. The runtime is bound as a parameter, so a heartbeat can only
+// extend the lease on runs that daemon actually holds — a frame listing another
+// runtime's run in the same organization updates nothing.
+func (q *Queries) HeartbeatRunsForRuntime(ctx context.Context, arg HeartbeatRunsForRuntimeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, heartbeatRunsForRuntime, arg.OrgID, arg.RuntimeID, arg.Ids)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const listInFlightRunsForRuntime = `-- name: ListInFlightRunsForRuntime :many
+SELECT id, org_id, project_id, runtime_id, mode, status, phase, idempotency_key, attempts, heartbeat_at, total_count, passed_count, failed_count, skipped_count, error_count, error_code, error_message, created_by, assigned_at, started_at, finished_at, created_at, updated_at FROM runs
+WHERE org_id = $1 AND runtime_id = $2 AND status IN ('assigned', 'running')
+ORDER BY created_at
+`
+
+type ListInFlightRunsForRuntimeParams struct {
+	OrgID     uuid.UUID
+	RuntimeID uuid.NullUUID
+}
+
+// Runs a daemon is still expected to be working on. Used when a control-plane
+// connection drops so the runs it held can be dealt with immediately rather
+// than waiting out the heartbeat lease.
+func (q *Queries) ListInFlightRunsForRuntime(ctx context.Context, arg ListInFlightRunsForRuntimeParams) ([]Run, error) {
+	rows, err := q.db.Query(ctx, listInFlightRunsForRuntime, arg.OrgID, arg.RuntimeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Run{}
+	for rows.Next() {
+		var i Run
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.RuntimeID,
+			&i.Mode,
+			&i.Status,
+			&i.Phase,
+			&i.IdempotencyKey,
+			&i.Attempts,
+			&i.HeartbeatAt,
+			&i.TotalCount,
+			&i.PassedCount,
+			&i.FailedCount,
+			&i.SkippedCount,
+			&i.ErrorCount,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.CreatedBy,
+			&i.AssignedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRuns = `-- name: ListRuns :many
@@ -609,6 +819,30 @@ func (q *Queries) RefreshRunCounters(ctx context.Context, arg RefreshRunCounters
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const releaseClaimedRun = `-- name: ReleaseClaimedRun :execrows
+UPDATE runs
+SET status = 'queued', assigned_at = NULL, heartbeat_at = NULL
+WHERE org_id = $1 AND id = $2 AND status = 'assigned'
+`
+
+type ReleaseClaimedRunParams struct {
+	OrgID uuid.UUID
+	ID    uuid.UUID
+}
+
+// Undo of a claim whose `run.assign` never made it onto the wire (the daemon
+// disconnected between the claim and the send). Returning the run to the queue
+// immediately is what keeps assignment latency at one scheduler tick instead of
+// one lease expiry. `attempts` is deliberately NOT decremented: a runtime that
+// keeps dropping mid-assign must still exhaust its attempts.
+func (q *Queries) ReleaseClaimedRun(ctx context.Context, arg ReleaseClaimedRunParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseClaimedRun, arg.OrgID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const requeueStaleRuns = `-- name: RequeueStaleRuns :many
