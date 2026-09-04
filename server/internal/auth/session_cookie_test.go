@@ -99,6 +99,43 @@ func TestPlainHTTPDevelopmentGetsNoPrefix(t *testing.T) {
 	}
 }
 
+// Regression: DefaultSessionConfig leaves CookieName empty because the name is
+// derived. A caller that read the field directly got "" and built a header
+// like `Cookie: =token`, which reads as an expired session rather than a bug —
+// it broke the control-plane WebSocket tests and nothing else. Nothing may
+// return an empty cookie name, whatever the configuration.
+func TestEffectiveCookieNameIsNeverEmpty(t *testing.T) {
+	configs := []struct {
+		name string
+		cfg  auth.SessionConfig
+	}{
+		{"zero value", auth.SessionConfig{}},
+		{"production default", auth.DefaultSessionConfig()},
+		{"plain http dev", func() auth.SessionConfig {
+			c := auth.DefaultSessionConfig()
+			c.Secure = false
+			return c
+		}()},
+		{"with a domain", func() auth.SessionConfig {
+			c := auth.DefaultSessionConfig()
+			c.Domain = "app.example.com"
+			return c
+		}()},
+	}
+	for _, tc := range configs {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.cfg.EffectiveCookieName()
+			if got == "" {
+				t.Fatal("EffectiveCookieName returned an empty string")
+			}
+			// And it must agree with the name the manager actually issues under.
+			if issued := auth.NewSessions(nil, tc.cfg).CookieName(); issued != got {
+				t.Fatalf("EffectiveCookieName says %q but Sessions issues %q", got, issued)
+			}
+		})
+	}
+}
+
 // An explicit name still wins, for a deployment mid-migration that has to keep
 // an existing cookie name working.
 func TestAnExplicitCookieNameIsHonoured(t *testing.T) {

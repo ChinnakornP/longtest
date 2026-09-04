@@ -95,6 +95,20 @@ func SessionCookieName(secure bool, domain string) string {
 	return SessionCookieBaseName
 }
 
+// EffectiveCookieName is the name a session issued under this config will
+// actually carry.
+//
+// Read this, never the CookieName field. The field is an override that is
+// normally empty — the name is derived — so a caller that reads it directly
+// gets "" and builds a header like `Cookie: =token`, which no server matches
+// and which looks exactly like an expired session rather than a bug.
+func (c SessionConfig) EffectiveCookieName() string {
+	if c.CookieName != "" {
+		return c.CookieName
+	}
+	return SessionCookieName(c.Secure, c.Domain)
+}
+
 // SessionCookieSameSite is the mode used for the session cookie. It is a
 // constant rather than configuration: relaxing it to None would make every
 // state-changing endpoint CSRF-reachable.
@@ -116,9 +130,7 @@ type Sessions struct {
 
 // NewSessions returns a session manager over store.
 func NewSessions(store Store, cfg SessionConfig) *Sessions {
-	if cfg.CookieName == "" {
-		cfg.CookieName = SessionCookieName(cfg.Secure, cfg.Domain)
-	}
+	cfg.CookieName = cfg.EffectiveCookieName()
 	if cfg.TTL <= 0 {
 		cfg.TTL = DefaultSessionConfig().TTL
 	}

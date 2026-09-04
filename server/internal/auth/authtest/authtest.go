@@ -194,8 +194,7 @@ func SessionConfig() auth.SessionConfig {
 // rather than written out, because the name follows from Secure and Domain:
 // hard-coding it here would let the derivation change without a test noticing.
 func SessionCookieName() string {
-	cfg := SessionConfig()
-	return auth.SessionCookieName(cfg.Secure, cfg.Domain)
+	return SessionConfig().EffectiveCookieName()
 }
 
 // Env is one test's world: a scratch database and a server running the handler

@@ -109,10 +109,15 @@ Corpus case: `markdown-image-exfil`.
 1. The page persuades the agent that reading `~/.ssh/id_ed25519` is part of the
    task, or the CLI simply decides to explore.
 
-**Stopped by:** Landlock. The workspace is read-write, a small system list is
-read-execute, nothing else is reachable — including other runs' workspaces.
-`no_new_privs` closes the setuid escape. Tests:
-`TestSandboxConfinesReadsToTheWorkspace`, `TestSandboxRefusesToFollowASymlinkOut`.
+**Stopped by:** Landlock, for a child launched through `security.Spec`. The
+workspace is read-write, a small system list is read-execute, nothing else is
+reachable — including other runs' workspaces. `no_new_privs` closes the setuid
+escape. Tests: `TestSandboxConfinesReadsToTheWorkspace`,
+`TestSandboxRefusesToFollowASymlinkOut`.
+
+**Not yet, in the shipped daemon.** Nothing is launched through `Spec` today —
+see the wiring note in [SECURITY.md](SECURITY.md#5-process-sandbox). Until T10
+routes the launch path through it, this attack path is open.
 
 ### AP-7 — The AI CLI reads the daemon's own credentials
 
@@ -121,7 +126,12 @@ read-execute, nothing else is reachable — including other runs' workspaces.
 2. A child process inherits the environment and prints it.
 
 **Stopped by:** the child environment is built from an allowlist, not
-inherited. Test: `TestSandboxDoesNotInheritTheDaemonEnvironment`.
+inherited — again, for a child launched through `security.Spec`. Test:
+`TestSandboxDoesNotInheritTheDaemonEnvironment`.
+
+**Not yet, in the shipped daemon.** `proc.Options.Env` is nil at every call
+site, and a nil `Env` inherits. The executor sidecar therefore holds a copy of
+`DAEMON_PAIRING_TOKEN` and `S3_SECRET_ACCESS_KEY` today.
 
 ### AP-8 — The target app's password ends up in an artifact or a log
 
@@ -173,6 +183,22 @@ Test: `TestCorpusIsBounded`.
 **Stopped by:** the `__Host-` prefix, which a browser will only store for a
 cookie that is Secure, `Path=/`, and Domain-less. Test:
 `TestHostPrefixedCookieIsIssuedWithItsPreconditions`.
+
+### AP-12b — Symlink escape from inside a workspace
+
+1. Something with write access inside a run's workspace — the executor, or a
+   Chromium renderer that escaped its own sandbox — creates a symlink named
+   after the next test case id.
+2. The daemon calls `ws.MkdirAll(PhaseExecution, testCase.ID)` and follows it.
+3. Evidence for that test case is written outside the workspace root.
+
+**Not stopped today.** `workspace.Path` checks the path lexically, which holds
+against a hostile path string and not against a hostile filesystem. Verified
+against the current tree. `security.Workspace` wraps `os.Root`, which resolves
+each component in the kernel and refuses; wiring it in is the fix. Severity is
+bounded — this needs prior write access inside the workspace, so it is a
+containment failure rather than a first step — but containment is the whole
+point of a workspace.
 
 ### AP-13 — Cross-tenant read
 

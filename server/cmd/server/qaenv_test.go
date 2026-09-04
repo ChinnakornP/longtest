@@ -261,7 +261,7 @@ func (e *qaEnv) dialBrowser(t *testing.T, client *authtest.Client, runID uuid.UU
 
 	header := http.Header{}
 	// The session travels as a cookie, exactly as it does from a browser.
-	header.Set("Cookie", authtest.SessionConfig().CookieName+"="+client.SessionToken)
+	header.Set("Cookie", authtest.SessionCookieName()+"="+client.SessionToken)
 
 	conn, resp, err := websocket.Dial(t.Context(), e.wsURL(path), &websocket.DialOptions{HTTPHeader: header})
 	status := closeHandshake(resp)

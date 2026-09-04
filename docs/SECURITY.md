@@ -176,9 +176,17 @@ not be able to rewrite the operator's config.
 
 ### 5. Process sandbox
 
-`security.Spec` builds every child process. Restrictions are applied in the
-child, after `fork` and before `exec`, so there is no window in which the
+`security.Spec` is how a child process is confined. Restrictions are applied in
+the child, after `fork` and before `exec`, so there is no window in which the
 process exists unrestricted.
+
+> **Wiring status.** `Spec` is built and tested, but the daemon does not launch
+> anything through it yet. Every child today — the executor sidecar and the CLI
+> detection probes — goes through `daemon/proc` (T09), which sets a process
+> group but applies no rlimits, no Landlock and no environment allowlist.
+> Routing the launch path through `Spec` is T10's job; until then the
+> guarantees in this section describe the mechanism, not the shipped daemon.
+> Two specific consequences are in [Known gaps](#known-gaps).
 
 - `no_new_privs`, so a confined agent cannot escape through `sudo` or a setuid
   helper.
@@ -191,11 +199,12 @@ process exists unrestricted.
   real workstation. See [Known gaps](#known-gaps).
 - Own process group plus `Pdeathsig`, so a wall-clock kill takes the whole tree
   and an orphaned Chromium does not outlive the daemon.
-- **The daemon's environment is not inherited.** Only an explicit allowlist
-  crosses (`PATH`, `LANG`, `TZ`, TLS bundle paths, plus whatever a provider
-  names). The daemon's own environment holds the runtime pairing token and the
-  artifact-store credentials.
-  Test: `TestSandboxDoesNotInheritTheDaemonEnvironment`.
+- **The daemon's environment is not inherited** by a child launched through
+  `Spec`. Only an explicit allowlist crosses (`PATH`, `LANG`, `TZ`, TLS bundle
+  paths, plus whatever a provider names). The daemon's own environment holds
+  the runtime pairing token and the artifact-store credentials.
+  Test: `TestSandboxDoesNotInheritTheDaemonEnvironment`. See the wiring note
+  above for what the daemon does today.
 - `$HOME` and `$TMPDIR` are the run's workspace, so anything the CLI caches
   lands where it is allowed to write and is deleted with the run.
 
@@ -300,6 +309,8 @@ Tracked, not hidden. Each is a follow-up rather than something quietly absent.
 
 | Gap | Impact | Status |
 | --- | --- | --- |
+| The daemon's launch path does not use `security.Spec` | The executor sidecar runs with no rlimits, no Landlock and — because `proc.Options.Env` is nil at every call site — a full copy of the daemon's environment, including `DAEMON_PAIRING_TOKEN` and `S3_SECRET_ACCESS_KEY` | `daemon/executor/executor.go:118`, `daemon/agent/detect.go:121`, `daemon/runtime/doctor.go:192`. T10 wires the launch path through `Spec`. |
+| `workspace.Path` / `workspace.MkdirAll` confine lexically, not by resolution | A symlink planted inside a workspace is followed out of it. `filepath.Rel` + a `..` prefix check is safe against a hostile *path string* and not against a hostile *filesystem*, which is the threat here — the agent has write access to its own workspace by design. Verified: `MkdirAll(PhaseExecution, "link", "x")` creates a directory outside the root. `WriteFile` is unaffected (it rejects a separator in the name). | `daemon/workspace/workspace.go:239`; live caller `daemon/runtime/execute.go:95`. `security.Workspace` (`os.Root`) is the fix and already ships in this package. |
 | No human-in-the-loop approval for irreversible actions (payment, delete, permission change, e-mail send) | The agent can perform a destructive action on the target app without asking | The plan gate has no `requires_approval` rule yet; needs a UI to approve into. Follow-up issue. |
 | Egress is enforced in-process, not by a proxy | `NetworkProxy` sets `HTTP(S)_PROXY`, which a well-behaved client honours and a compromised one ignores. Only `NetworkNone` is kernel-enforced. | Needs a deny-by-default egress proxy container and a network namespace that routes only to it. Follow-up issue. |
 | `RLIMIT_NPROC` is approximate | Two concurrent runs raise each other's baseline, so the fork ceiling is softer than stated | A precise limit needs a cgroup with `pids.max` and cgroup delegation the daemon cannot assume on a customer laptop. |
