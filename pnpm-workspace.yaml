@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+  - daemon/executor
+
+# Supply-chain guard: refuse to resolve a package version that was published
+# less than 24h ago. Compromised-maintainer npm attacks are caught and yanked
+# within hours, and nothing in this repo needs a same-day release.
+# Add a reviewed `<name>@<version>` to minimumReleaseAgeExclude to override.
+minimumReleaseAge: 1440

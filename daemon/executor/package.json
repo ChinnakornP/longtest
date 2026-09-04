@@ -1,0 +1,19 @@
+{
+  "name": "@qa/executor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Node sidecar that drives Playwright on behalf of the Go daemon",
+  "bin": { "qa-executor": "./src/main.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@qa/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "vitest": "4.1.11"
+  }
+}

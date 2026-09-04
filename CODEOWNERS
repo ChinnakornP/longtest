@@ -1,0 +1,16 @@
+# Default owner for anything not matched below.
+*                       @ChinnakornP
+
+# Infrastructure, CI and anything that can leak a secret or widen the
+# attack surface needs a DevOps/Security review.
+/.github/               @ChinnakornP
+/docker/                @ChinnakornP
+/docker-compose.yml     @ChinnakornP
+/Makefile               @ChinnakornP
+/.env.example           @ChinnakornP
+/.gitignore             @ChinnakornP
+/CODEOWNERS             @ChinnakornP
+
+# Cross-cutting contracts: a change here breaks every other component.
+/packages/qa-schema/    @ChinnakornP
+/docs/adr/              @ChinnakornP

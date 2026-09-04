@@ -1,0 +1,34 @@
+# Secret scanning config. Enforced in CI (job `security`) and runnable locally
+# with `make scan-secrets`.
+#
+# This repository is public: a committed credential is a disclosed credential.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "qa-dotenv-committed"
+description = "A .env file must never be committed - only .env.example"
+regex = '''(?i)^(?:POSTGRES_PASSWORD|MINIO_ROOT_PASSWORD|S3_SECRET_ACCESS_KEY|DAEMON_PAIRING_TOKEN)\s*='''
+# RE2 has no lookahead, so .env.example is excluded by the rule allowlist.
+path = '''(^|/)\.env(\.[A-Za-z0-9_-]+)?$'''
+
+  [rules.allowlist]
+  description = "The committed template is placeholders by design"
+  paths = ['''(^|/)\.env\.example$''']
+
+[allowlist]
+description = "Build output, lockfiles and documented local-dev placeholders"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)\.next/''',
+  '''(^|/)dist/''',
+  '''(^|/)coverage/''',
+  '''(^|/)pnpm-lock\.yaml$''',
+  '''(^|/)go\.sum$''',
+]
+regexes = [
+  # .env.example ships obvious non-secrets on purpose; the rule above is what
+  # catches a real .env being committed.
+  '''local-dev-only-change-me''',
+  '''replace-me-with-a-runtime-pairing-token''',
+]
