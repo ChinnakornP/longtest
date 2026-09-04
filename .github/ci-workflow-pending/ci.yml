@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege by default: no job needs to write to the repository.
+# A job that genuinely needs more raises it locally, never here.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Third-party actions are pinned to a commit SHA, not a tag: a tag can be
+  # moved by whoever owns the action.
+  GOLANGCI_LINT_VERSION: v2.13.2
+  GITLEAKS_VERSION: v8.30.0
+  NODE_VERSION: '24'
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: server/go.mod
+          cache: false
+
+      - name: Cache Go modules and tools
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: go-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ hashFiles('**/go.mod', '**/go.sum') }}
+          restore-keys: go-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-
+
+      - name: Install golangci-lint
+        # Built from source at a pinned version so the checksum database
+        # verifies it. No curl-to-shell installers in this pipeline.
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
+
+      - name: Lint Go
+        # The Makefile falls back to $(go env GOPATH)/bin when golangci-lint
+        # is not on PATH, which is where `go install` just put it.
+        run: make lint-go
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint JS (eslint + tsc)
+        run: make lint-js
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: server/go.mod
+          cache: false
+
+      - name: Cache Go modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-test-${{ runner.os }}-${{ hashFiles('**/go.mod', '**/go.sum') }}
+          restore-keys: go-test-${{ runner.os }}-
+
+      - name: Test Go
+        run: make test-go
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test JS (vitest)
+        run: make test-js
+
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Secret scan
+        # --redact keeps any hit out of the (public) CI log; the fingerprint in
+        # the output is enough to locate it in a local run.
+        run: |
+          docker run --rm \
+            -v "$PWD:/repo:ro" -w /repo \
+            "ghcr.io/gitleaks/gitleaks:${GITLEAKS_VERSION}" \
+            dir --no-banner --redact --config /repo/.gitleaks.toml .
+
+      - name: Validate docker-compose
+        run: docker compose --env-file .env.example config --quiet
+
+      - name: Reject a committed .env
+        run: |
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo "::error::.env is tracked by git - it must stay local (see .env.example)"
+            exit 1
+          fi
+          echo "no .env is tracked"
