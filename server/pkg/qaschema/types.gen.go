@@ -89,7 +89,11 @@ type Artifact struct {
 	// daemon builds the key from the test-case document it was handed and never
 	// sees the uuid the backend assigns. What carries the tenant boundary is the
 	// orgs/{orgId}/runs/{runId}/ prefix, which is the same prefix the presigned
-	// PUT policy is scoped to.
+	// PUT policy is scoped to — so every segment is anchored to start with an
+	// alphanumeric, exactly as the artifacts_storage_key_layout CHECK does. A
+	// segment that could be ".." would make that prefix bound nothing, and the
+	// upload happens before the row is ever inserted: the database is the last
+	// gate here, not the first.
 	Key         string  `json:"key"`
 	ContentType *string `json:"contentType,omitempty"`
 	SizeBytes   *int    `json:"sizeBytes,omitempty"`
@@ -134,7 +138,9 @@ type ArtifactUpload struct {
 	PresignedPutBase string `json:"presignedPutBase"`
 
 	// KeyPrefix — The daemon may only write below this prefix; the presigned
-	// policy enforces the same bound server-side.
+	// policy enforces the same bound server-side. Segments are anchored the same
+	// way as Artifact.key: a prefix whose run segment could be ".." is not a
+	// bound.
 	KeyPrefix string `json:"keyPrefix"`
 	ExpiresAt string `json:"expiresAt"`
 }

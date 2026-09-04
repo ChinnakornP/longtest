@@ -773,8 +773,8 @@ export const SCHEMA_DOCUMENTS: Record<SchemaId, unknown> = {
           "keyPrefix": {
             "type": "string",
             "maxLength": 512,
-            "pattern": "^orgs/[A-Za-z0-9._-]+/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9._-]+/$",
-            "description": "The daemon may only write below this prefix; the presigned policy enforces the same bound server-side."
+            "pattern": "^orgs/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/$",
+            "description": "The daemon may only write below this prefix; the presigned policy enforces the same bound server-side. Segments are anchored the same way as Artifact.key: a prefix whose run segment could be \"..\" is not a bound."
           },
           "expiresAt": {
             "type": "string",
@@ -1140,8 +1140,8 @@ export const SCHEMA_DOCUMENTS: Record<SchemaId, unknown> = {
           "key": {
             "type": "string",
             "maxLength": 1024,
-            "pattern": "^orgs/[A-Za-z0-9._-]+/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9._-]+/([A-Za-z0-9._-]{1,200}/)?[A-Za-z0-9._-]{1,200}$",
-            "description": "Object storage key: orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/{testCaseId}/{filename}, with the {testCaseId} segment omitted for a run-level artifact such as a discovery HAR. That segment is a test case *ref* (TC-001), not the database uuid: the daemon builds the key from the test-case document it was handed and never sees the uuid the backend assigns. What carries the tenant boundary is the orgs/{orgId}/runs/{runId}/ prefix, which is the same prefix the presigned PUT policy is scoped to."
+            "pattern": "^orgs/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/runs/[0-9]{4}-[0-9]{2}-[0-9]{2}/[A-Za-z0-9][A-Za-z0-9._-]{0,199}/([A-Za-z0-9][A-Za-z0-9._-]{0,99}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,199}$",
+            "description": "Object storage key: orgs/{orgId}/runs/{YYYY-MM-DD}/{runId}/{testCaseId}/{filename}, with the {testCaseId} segment omitted for a run-level artifact such as a discovery HAR. That segment is a test case *ref* (TC-001), not the database uuid: the daemon builds the key from the test-case document it was handed and never sees the uuid the backend assigns. What carries the tenant boundary is the orgs/{orgId}/runs/{runId}/ prefix, which is the same prefix the presigned PUT policy is scoped to — so every segment is anchored to start with an alphanumeric, exactly as the artifacts_storage_key_layout CHECK does. A segment that could be \"..\" would make that prefix bound nothing, and the upload happens before the row is ever inserted: the database is the last gate here, not the first."
           },
           "contentType": {
             "type": "string",

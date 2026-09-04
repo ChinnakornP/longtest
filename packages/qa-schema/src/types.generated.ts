@@ -48,7 +48,11 @@ export interface Artifact {
    * HAR. That segment is a test case *ref* (TC-001), not the database uuid: the daemon
    * builds the key from the test-case document it was handed and never sees the uuid the
    * backend assigns. What carries the tenant boundary is the orgs/{orgId}/runs/{runId}/
-   * prefix, which is the same prefix the presigned PUT policy is scoped to.
+   * prefix, which is the same prefix the presigned PUT policy is scoped to — so every
+   * segment is anchored to start with an alphanumeric, exactly as the
+   * artifacts_storage_key_layout CHECK does. A segment that could be ".." would make that
+   * prefix bound nothing, and the upload happens before the row is ever inserted: the
+   * database is the last gate here, not the first.
    */
   key: string;
   contentType?: string;
@@ -78,7 +82,8 @@ export interface ArtifactUpload {
   presignedPutBase: string;
   /**
    * The daemon may only write below this prefix; the presigned policy enforces the same
-   * bound server-side.
+   * bound server-side. Segments are anchored the same way as Artifact.key: a prefix whose
+   * run segment could be ".." is not a bound.
    */
   keyPrefix: string;
   expiresAt: string;
