@@ -1,6 +1,9 @@
+-- The org comes from the redeemed pairing code, never from the daemon's
+-- request body. `host_info` is what the machine says about itself at pairing
+-- time; the authoritative capability report arrives later in the `hello` frame.
 -- name: CreateRuntime :one
-INSERT INTO runtimes (org_id, name)
-VALUES ($1, $2)
+INSERT INTO runtimes (org_id, name, version, host_info)
+VALUES ($1, $2, sqlc.arg(version), COALESCE(sqlc.narg(host_info)::jsonb, '{}'::jsonb))
 RETURNING *;
 
 -- name: GetRuntime :one

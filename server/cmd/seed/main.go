@@ -21,22 +21,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 
+	"github.com/ChinnakornP/longtest/server/internal/auth"
 	"github.com/ChinnakornP/longtest/server/internal/db"
 	"github.com/ChinnakornP/longtest/server/internal/db/dbgen"
 	pgdb "github.com/ChinnakornP/longtest/server/pkg/db"
 )
 
 const (
-	defaultOrgName      = "Acme QA"
-	defaultOrgSlug      = "acme"
-	defaultOwnerEmail   = "owner@example.com"
-	defaultOwnerName    = "Acme Owner"
-	defaultProjectName  = "Demo application"
-	defaultProjectURL   = "https://demo.example.com"
-	minOwnerPasswordLen = 12
-	seedTimeout         = 30 * time.Second
+	defaultOrgName     = "Acme QA"
+	defaultOrgSlug     = "acme"
+	defaultOwnerEmail  = "owner@example.com"
+	defaultOwnerName   = "Acme Owner"
+	defaultProjectName = "Demo application"
+	defaultProjectURL  = "https://demo.example.com"
+	seedTimeout        = 30 * time.Second
 )
 
 func main() {
@@ -51,9 +50,9 @@ func main() {
 
 func run(ctx context.Context) error {
 	password := os.Getenv("SEED_OWNER_PASSWORD")
-	if len(password) < minOwnerPasswordLen {
-		return fmt.Errorf("SEED_OWNER_PASSWORD must be set and at least %d characters; "+
-			"this command never invents or defaults a password", minOwnerPasswordLen)
+	if err := auth.ValidatePassword(password); err != nil {
+		return fmt.Errorf("SEED_OWNER_PASSWORD: %w; "+
+			"this command never invents or defaults a password", err)
 	}
 
 	dsn, err := pgdb.DSNFromEnv()
@@ -72,9 +71,9 @@ func run(ctx context.Context) error {
 
 	store := db.NewStore(pool)
 
-	// bcrypt at the default cost. The hash format is the auth task's decision
-	// to revisit; the seed only has to produce something that layer accepts.
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	// The same hasher the login path uses (argon2id, LONG-7). Seeding with a
+	// different algorithm would produce an account that cannot sign in.
+	hash, err := auth.NewHasher(auth.DefaultPasswordParams()).Hash(password)
 	if err != nil {
 		return fmt.Errorf("hash the owner password: %w", err)
 	}
@@ -92,7 +91,7 @@ func run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		owner, err = getOrCreateOwner(ctx, q, string(hash))
+		owner, err = getOrCreateOwner(ctx, q, hash)
 		if err != nil {
 			return err
 		}
