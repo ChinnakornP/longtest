@@ -17,6 +17,14 @@
 //     runtime token to (orgID, runtimeID) from the token row. Nothing a daemon
 //     sends is ever consulted for either value.
 //
+// Caller, OrgScope and RuntimeCaller are sealed: their fields are unexported,
+// the functions that put them into a context are unexported, and no exported
+// function builds one out of its arguments. Outside this package the only
+// value of those types that can be written down is the zero value, which names
+// nobody. That is what makes ADR-006 and ADR-007 properties of the code rather
+// than conventions - see seal_test.go, which fails the build if it stops being
+// true.
+//
 // The organization, membership, invite and pairing endpoints live in
 // internal/org, which depends on this package. The dependency is one-way: the
 // one thing auth needs from org - creating an organization during signup -

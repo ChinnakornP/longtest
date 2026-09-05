@@ -23,10 +23,10 @@ import (
 //	RequireOrg   -> X-Org-ID + a membership row    -> OrgScope in the context
 //	RequireRole  -> the role gate for this route
 //
-// A handler that needs an org id calls auth.MustOrgScope(ctx). There is no
-// exported way to build an OrgScope from a request, so "read the org id out of
+// A handler that needs an org id calls auth.MustOrgScope(ctx). OrgScope has
+// no exported field and no exported constructor, so "read the org id out of
 // the body" is not a mistake a handler can make - the type it needs simply
-// cannot be obtained that way.
+// cannot be written down outside this package.
 
 // RequireUser rejects a request without a live session.
 //
@@ -54,8 +54,8 @@ func RequireUser(sessions *Sessions) httpx.Middleware {
 				return
 			}
 
-			ctx := WithCaller(r.Context(), caller)
-			ctx = httpx.WithLogger(ctx, httpx.LoggerFrom(ctx).With(slog.String("user_id", caller.UserID.String())))
+			ctx := withCaller(r.Context(), caller)
+			ctx = httpx.WithLogger(ctx, httpx.LoggerFrom(ctx).With(slog.String("user_id", caller.userID.String())))
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -90,7 +90,7 @@ func RequireOrg(store Store) httpx.Middleware {
 				return
 			}
 
-			membership, err := store.GetMembership(r.Context(), dbgen.GetMembershipParams{OrgID: orgID, UserID: caller.UserID})
+			membership, err := store.GetMembership(r.Context(), dbgen.GetMembershipParams{OrgID: orgID, UserID: caller.userID})
 			if err != nil {
 				if errors.Is(db.Classify(err), db.ErrNotFound) {
 					httpx.WriteError(w, r, httpx.Forbidden("you are not a member of that organization"))
@@ -107,8 +107,8 @@ func RequireOrg(store Store) httpx.Middleware {
 				return
 			}
 
-			scope := OrgScope{Caller: caller, OrgID: orgID, Role: role}
-			ctx := WithOrgScope(r.Context(), scope)
+			scope := OrgScope{caller: caller, orgID: orgID, role: role}
+			ctx := withOrgScope(r.Context(), scope)
 			ctx = httpx.WithLogger(ctx, httpx.LoggerFrom(ctx).With(
 				slog.String("org_id", orgID.String()),
 				slog.String("role", role.String()),
@@ -131,9 +131,9 @@ func RequireRole(minimum Role) httpx.Middleware {
 				httpx.WriteError(w, r, err)
 				return
 			}
-			if !scope.Role.AtLeast(minimum) {
+			if !scope.role.AtLeast(minimum) {
 				httpx.WriteError(w, r, httpx.Forbidden(
-					"this action needs the %s role or higher; you are %s", minimum, scope.Role))
+					"this action needs the %s role or higher; you are %s", minimum, scope.role))
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -162,7 +162,7 @@ func RequireOrgMatchesPath(param string) httpx.Middleware {
 				httpx.WriteError(w, r, err)
 				return
 			}
-			if pathOrg != scope.OrgID {
+			if pathOrg != scope.orgID {
 				httpx.WriteError(w, r, httpx.Forbidden(
 					"the organization in the path does not match %s", OrgHeader))
 				return
@@ -197,10 +197,10 @@ func RequireRuntime(store Store) httpx.Middleware {
 				return
 			}
 
-			ctx := WithRuntimeCaller(r.Context(), caller)
+			ctx := withRuntimeCaller(r.Context(), caller)
 			ctx = httpx.WithLogger(ctx, httpx.LoggerFrom(ctx).With(
-				slog.String("org_id", caller.OrgID.String()),
-				slog.String("runtime_id", caller.RuntimeID.String()),
+				slog.String("org_id", caller.orgID.String()),
+				slog.String("runtime_id", caller.runtimeID.String()),
 			))
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -262,5 +262,5 @@ func AuthenticateRuntime(ctx context.Context, store Store, token string) (Runtim
 		httpx.LoggerFrom(ctx).WarnContext(ctx, "could not record runtime token use", "err", db.Classify(err))
 	}
 
-	return RuntimeCaller{OrgID: row.OrgID, RuntimeID: row.RuntimeID, TokenID: row.ID}, nil
+	return RuntimeCaller{orgID: row.OrgID, runtimeID: row.RuntimeID, tokenID: row.ID}, nil
 }

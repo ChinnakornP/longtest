@@ -64,7 +64,7 @@ type FixtureListResponse struct {
 // ListFixtures returns a project's registered fixture names.
 func (s *Service) ListFixtures(ctx context.Context, scope auth.OrgScope, projectID uuid.UUID) ([]dbgen.ProjectFixture, error) {
 	fixtures, err := s.store.ListProjectFixtures(ctx, dbgen.ListProjectFixturesParams{
-		OrgID: scope.OrgID, ProjectID: projectID,
+		OrgID: scope.OrgID(), ProjectID: projectID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list project fixtures: %w", db.Classify(err))
@@ -91,7 +91,7 @@ func (s *Service) RegisterFixture(ctx context.Context, scope auth.OrgScope, proj
 	}
 
 	fixture, err := s.store.UpsertProjectFixture(ctx, dbgen.UpsertProjectFixtureParams{
-		OrgID: scope.OrgID, ProjectID: projectID, Name: name, Description: description,
+		OrgID: scope.OrgID(), ProjectID: projectID, Name: name, Description: description,
 	})
 	if err != nil {
 		if errors.Is(db.Classify(err), db.ErrConflict) {
@@ -113,7 +113,7 @@ func (s *Service) RegisterFixture(ctx context.Context, scope auth.OrgScope, proj
 // is no longer registered, and an execute run's precondition fails loudly.
 func (s *Service) DeleteFixture(ctx context.Context, scope auth.OrgScope, projectID uuid.UUID, name string) error {
 	deleted, err := s.store.DeleteProjectFixture(ctx, dbgen.DeleteProjectFixtureParams{
-		OrgID: scope.OrgID, ProjectID: projectID, Name: name,
+		OrgID: scope.OrgID(), ProjectID: projectID, Name: name,
 	})
 	if err != nil {
 		return fmt.Errorf("delete fixture: %w", db.Classify(err))

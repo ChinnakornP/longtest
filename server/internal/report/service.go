@@ -136,27 +136,27 @@ func (s *Service) Get(ctx context.Context, scope auth.OrgScope, runID uuid.UUID)
 		return Report{}, err
 	}
 
-	executions, err := s.store.ListExecutionsForRun(ctx, dbgen.ListExecutionsForRunParams{OrgID: scope.OrgID, RunID: runID})
+	executions, err := s.store.ListExecutionsForRun(ctx, dbgen.ListExecutionsForRunParams{OrgID: scope.OrgID(), RunID: runID})
 	if err != nil {
 		return Report{}, fmt.Errorf("list executions: %w", db.Classify(err))
 	}
-	steps, err := s.store.ListExecutionStepsForRun(ctx, dbgen.ListExecutionStepsForRunParams{OrgID: scope.OrgID, RunID: runID})
+	steps, err := s.store.ListExecutionStepsForRun(ctx, dbgen.ListExecutionStepsForRunParams{OrgID: scope.OrgID(), RunID: runID})
 	if err != nil {
 		return Report{}, fmt.Errorf("list execution steps: %w", db.Classify(err))
 	}
-	assertions, err := s.store.ListExecutionAssertionsForRun(ctx, dbgen.ListExecutionAssertionsForRunParams{OrgID: scope.OrgID, RunID: runID})
+	assertions, err := s.store.ListExecutionAssertionsForRun(ctx, dbgen.ListExecutionAssertionsForRunParams{OrgID: scope.OrgID(), RunID: runID})
 	if err != nil {
 		return Report{}, fmt.Errorf("list execution assertions: %w", db.Classify(err))
 	}
-	artifacts, err := s.store.ListArtifactsForRun(ctx, dbgen.ListArtifactsForRunParams{OrgID: scope.OrgID, RunID: runID})
+	artifacts, err := s.store.ListArtifactsForRun(ctx, dbgen.ListArtifactsForRunParams{OrgID: scope.OrgID(), RunID: runID})
 	if err != nil {
 		return Report{}, fmt.Errorf("list artifacts: %w", db.Classify(err))
 	}
-	findings, err := s.store.ListFindingsForRun(ctx, dbgen.ListFindingsForRunParams{OrgID: scope.OrgID, RunID: runID})
+	findings, err := s.store.ListFindingsForRun(ctx, dbgen.ListFindingsForRunParams{OrgID: scope.OrgID(), RunID: runID})
 	if err != nil {
 		return Report{}, fmt.Errorf("list findings: %w", db.Classify(err))
 	}
-	evidence, err := s.store.ListFindingEvidenceForRun(ctx, dbgen.ListFindingEvidenceForRunParams{OrgID: scope.OrgID, RunID: runID})
+	evidence, err := s.store.ListFindingEvidenceForRun(ctx, dbgen.ListFindingEvidenceForRunParams{OrgID: scope.OrgID(), RunID: runID})
 	if err != nil {
 		return Report{}, fmt.Errorf("list finding evidence: %w", db.Classify(err))
 	}
@@ -186,7 +186,7 @@ func (s *Service) Get(ctx context.Context, scope auth.OrgScope, runID uuid.UUID)
 	artifactsByExecution := map[uuid.UUID][]ArtifactView{}
 	runLevel := make([]ArtifactView, 0)
 	for _, a := range artifacts {
-		view := s.artifactView(ctx, scope.OrgID, a, logger)
+		view := s.artifactView(ctx, scope.OrgID(), a, logger)
 		if a.ExecutionID.Valid {
 			artifactsByExecution[a.ExecutionID.UUID] = append(artifactsByExecution[a.ExecutionID.UUID], view)
 			continue
@@ -197,7 +197,7 @@ func (s *Service) Get(ctx context.Context, scope auth.OrgScope, runID uuid.UUID)
 	evidenceByFinding := map[uuid.UUID][]ArtifactView{}
 	for _, row := range evidence {
 		evidenceByFinding[row.FindingID] = append(evidenceByFinding[row.FindingID],
-			s.artifactView(ctx, scope.OrgID, row.Artifact, logger))
+			s.artifactView(ctx, scope.OrgID(), row.Artifact, logger))
 	}
 
 	report := Report{

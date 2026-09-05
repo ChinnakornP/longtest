@@ -42,7 +42,7 @@ func (s *Service) Create(ctx context.Context, scope auth.OrgScope, name, baseURL
 	}
 
 	created, err := s.store.CreateProject(ctx, dbgen.CreateProjectParams{
-		OrgID: scope.OrgID, Name: name, BaseURL: normalised,
+		OrgID: scope.OrgID(), Name: name, BaseURL: normalised,
 	})
 	if err == nil {
 		return created, nil
@@ -51,7 +51,7 @@ func (s *Service) Create(ctx context.Context, scope auth.OrgScope, name, baseURL
 		return dbgen.Project{}, fmt.Errorf("create project: %w", db.Classify(err))
 	}
 
-	existing, lookupErr := s.store.GetProjectByName(ctx, dbgen.GetProjectByNameParams{OrgID: scope.OrgID, Name: name})
+	existing, lookupErr := s.store.GetProjectByName(ctx, dbgen.GetProjectByNameParams{OrgID: scope.OrgID(), Name: name})
 	if lookupErr != nil {
 		return dbgen.Project{}, fmt.Errorf("look up existing project: %w", db.Classify(lookupErr))
 	}
@@ -63,7 +63,22 @@ func (s *Service) Create(ctx context.Context, scope auth.OrgScope, name, baseURL
 
 // Get returns one project. Another organization's project is a 404.
 func (s *Service) Get(ctx context.Context, scope auth.OrgScope, projectID uuid.UUID) (dbgen.Project, error) {
-	found, err := s.store.GetProject(ctx, dbgen.GetProjectParams{OrgID: scope.OrgID, ID: projectID})
+	return s.get(ctx, scope.OrgID(), projectID)
+}
+
+// SystemGet is Get for work the server originates itself.
+//
+// The one caller is the run scheduler, assembling the run.assign frame for a
+// run it has already claimed: there is no request behind it and therefore no
+// auth.OrgScope to pass, and orgID comes from the claimed run row. That is the
+// only provenance this method is for. A handler has a scope and must use Get —
+// see ADR-007 and TestSystemProjectReadsHaveNoRequestCallers.
+func (s *Service) SystemGet(ctx context.Context, orgID, projectID uuid.UUID) (dbgen.Project, error) {
+	return s.get(ctx, orgID, projectID)
+}
+
+func (s *Service) get(ctx context.Context, orgID, projectID uuid.UUID) (dbgen.Project, error) {
+	found, err := s.store.GetProject(ctx, dbgen.GetProjectParams{OrgID: orgID, ID: projectID})
 	if err != nil {
 		if errors.Is(db.Classify(err), db.ErrNotFound) {
 			return dbgen.Project{}, httpx.NotFound("project not found")
@@ -82,13 +97,13 @@ type Listed struct {
 // List returns a page of an organization's projects, newest first.
 func (s *Service) List(ctx context.Context, scope auth.OrgScope, includeArchived bool, page httpx.Page) (Listed, error) {
 	projects, err := s.store.ListProjects(ctx, dbgen.ListProjectsParams{
-		OrgID: scope.OrgID, IncludeArchived: includeArchived, Limit: page.Limit, Offset: page.Offset,
+		OrgID: scope.OrgID(), IncludeArchived: includeArchived, Limit: page.Limit, Offset: page.Offset,
 	})
 	if err != nil {
 		return Listed{}, fmt.Errorf("list projects: %w", db.Classify(err))
 	}
 	total, err := s.store.CountProjects(ctx, dbgen.CountProjectsParams{
-		OrgID: scope.OrgID, IncludeArchived: includeArchived,
+		OrgID: scope.OrgID(), IncludeArchived: includeArchived,
 	})
 	if err != nil {
 		return Listed{}, fmt.Errorf("count projects: %w", db.Classify(err))
@@ -107,22 +122,32 @@ func (s *Service) List(ctx context.Context, scope auth.OrgScope, includeArchived
 // application-map@1. That is a 404 rather than an empty 200: "no map yet" and
 // "a map of nothing" are different states, and only one of them is true.
 func (s *Service) ApplicationMap(ctx context.Context, scope auth.OrgScope, projectID uuid.UUID) (qaschema.ApplicationMap, error) {
-	found, err := s.Get(ctx, scope, projectID)
+	return s.applicationMap(ctx, scope.OrgID(), projectID)
+}
+
+// SystemApplicationMap is ApplicationMap for server-originated work. It has
+// the same single caller, and the same provenance rule, as SystemGet.
+func (s *Service) SystemApplicationMap(ctx context.Context, orgID, projectID uuid.UUID) (qaschema.ApplicationMap, error) {
+	return s.applicationMap(ctx, orgID, projectID)
+}
+
+func (s *Service) applicationMap(ctx context.Context, orgID, projectID uuid.UUID) (qaschema.ApplicationMap, error) {
+	found, err := s.get(ctx, orgID, projectID)
 	if err != nil {
 		return qaschema.ApplicationMap{}, err
 	}
 
-	pages, err := s.store.ListPages(ctx, dbgen.ListPagesParams{OrgID: scope.OrgID, ProjectID: projectID})
+	pages, err := s.store.ListPages(ctx, dbgen.ListPagesParams{OrgID: orgID, ProjectID: projectID})
 	if err != nil {
 		return qaschema.ApplicationMap{}, fmt.Errorf("list pages: %w", db.Classify(err))
 	}
 	elements, err := s.store.ListElementsForProject(ctx, dbgen.ListElementsForProjectParams{
-		OrgID: scope.OrgID, ProjectID: projectID,
+		OrgID: orgID, ProjectID: projectID,
 	})
 	if err != nil {
 		return qaschema.ApplicationMap{}, fmt.Errorf("list elements: %w", db.Classify(err))
 	}
-	workflows, err := s.store.ListWorkflows(ctx, dbgen.ListWorkflowsParams{OrgID: scope.OrgID, ProjectID: projectID})
+	workflows, err := s.store.ListWorkflows(ctx, dbgen.ListWorkflowsParams{OrgID: orgID, ProjectID: projectID})
 	if err != nil {
 		return qaschema.ApplicationMap{}, fmt.Errorf("list workflows: %w", db.Classify(err))
 	}
