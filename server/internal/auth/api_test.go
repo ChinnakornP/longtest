@@ -68,7 +68,7 @@ func mountProbes(mux *http.ServeMux, store auth.Store, sessions *auth.Sessions) 
 			return err
 		}
 		httpx.WriteJSON(w, r, http.StatusOK, probeResponse{
-			UserID: scope.UserID, OrgID: scope.OrgID, Role: scope.Role,
+			UserID: scope.UserID(), OrgID: scope.OrgID(), Role: scope.Role(),
 		})
 		return nil
 	})
@@ -78,7 +78,7 @@ func mountProbes(mux *http.ServeMux, store auth.Store, sessions *auth.Sessions) 
 		if !ok {
 			return httpx.Unauthorized("no caller")
 		}
-		httpx.WriteJSON(w, r, http.StatusOK, probeResponse{UserID: caller.UserID})
+		httpx.WriteJSON(w, r, http.StatusOK, probeResponse{UserID: caller.UserID()})
 		return nil
 	}), user))
 
@@ -105,7 +105,7 @@ func mountProbes(mux *http.ServeMux, store auth.Store, sessions *auth.Sessions) 
 		if err != nil {
 			return err
 		}
-		httpx.WriteJSON(w, r, http.StatusOK, probeResponse{OrgID: rc.OrgID, RuntimeID: rc.RuntimeID})
+		httpx.WriteJSON(w, r, http.StatusOK, probeResponse{OrgID: rc.OrgID(), RuntimeID: rc.RuntimeID()})
 		return nil
 	}), runtime))
 }

@@ -89,7 +89,7 @@ func (h *DaemonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c := newConn(ws)
-	release := h.registry.register(Target{OrgID: rc.OrgID, RuntimeID: rc.RuntimeID}, c)
+	release := h.registry.register(Target{OrgID: rc.OrgID(), RuntimeID: rc.RuntimeID()}, c)
 
 	// The request context is cancelled when ServeHTTP returns, which is what
 	// stops the keepalive; the read loop below is what keeps it running.
@@ -98,8 +98,8 @@ func (h *DaemonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	go c.keepalive(ctx)
 
 	logger := h.logger.With(
-		slog.String("org_id", rc.OrgID.String()),
-		slog.String("runtime_id", rc.RuntimeID.String()),
+		slog.String("org_id", rc.OrgID().String()),
+		slog.String("runtime_id", rc.RuntimeID().String()),
 	)
 	logger.InfoContext(ctx, "daemon connected")
 
@@ -166,7 +166,7 @@ func (h *DaemonHandler) dispatch(ctx context.Context, rc auth.RuntimeCaller, raw
 		// The token already said which runtime this is. A hello that disagrees
 		// is a misconfigured daemon holding the wrong token file, and letting
 		// it through would write one machine's capabilities onto another's row.
-		if payload.RuntimeID != rc.RuntimeID.String() {
+		if payload.RuntimeID != rc.RuntimeID().String() {
 			return &ProtocolError{Reason: "hello names a different runtime than the token"}
 		}
 		return h.plane.Hello(ctx, rc, payload)

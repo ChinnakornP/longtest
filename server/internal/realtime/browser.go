@@ -18,11 +18,16 @@ import (
 // permission to watch a run, and whatever the watcher missed.
 // internal/run implements it.
 type StreamSource interface {
-	// OpenRunStream authorises orgID to read runID and returns the frames it
+	// OpenRunStream authorises scope to read runID and returns the frames it
 	// has not seen. A run in another organization is a not-found error, never
 	// a different one: confirming that a run id exists elsewhere is itself a
 	// cross-tenant leak.
-	OpenRunStream(ctx context.Context, orgID, runID uuid.UUID, since int64) (RunStream, error)
+	//
+	// It takes the auth.OrgScope the middleware resolved, not an org id: the
+	// scope cannot be built from anything on the request (ADR-007), so this
+	// signature is what stops a future caller from passing the runId's owner
+	// instead of the subscriber's organization.
+	OpenRunStream(ctx context.Context, scope auth.OrgScope, runID uuid.UUID, since int64) (RunStream, error)
 }
 
 // RunStream is the opening state of a browser subscription.
@@ -112,7 +117,7 @@ func (h *BrowserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sub := h.hub.Subscribe(runID)
 	defer sub.Close()
 
-	stream, err := h.source.OpenRunStream(r.Context(), scope.OrgID, runID, since)
+	stream, err := h.source.OpenRunStream(r.Context(), scope, runID, since)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return

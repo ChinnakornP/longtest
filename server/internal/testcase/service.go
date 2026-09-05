@@ -38,13 +38,13 @@ func (s *Service) ListForProject(ctx context.Context, scope auth.OrgScope, proje
 	}
 
 	cases, err := s.store.ListTestCases(ctx, dbgen.ListTestCasesParams{
-		OrgID: scope.OrgID, ProjectID: projectID, Status: filter, Limit: page.Limit, Offset: page.Offset,
+		OrgID: scope.OrgID(), ProjectID: projectID, Status: filter, Limit: page.Limit, Offset: page.Offset,
 	})
 	if err != nil {
 		return Listed{}, fmt.Errorf("list test cases: %w", db.Classify(err))
 	}
 	total, err := s.store.CountTestCases(ctx, dbgen.CountTestCasesParams{
-		OrgID: scope.OrgID, ProjectID: projectID, Status: filter,
+		OrgID: scope.OrgID(), ProjectID: projectID, Status: filter,
 	})
 	if err != nil {
 		return Listed{}, fmt.Errorf("count test cases: %w", db.Classify(err))
@@ -54,7 +54,7 @@ func (s *Service) ListForProject(ctx context.Context, scope auth.OrgScope, proje
 
 // Get returns one case. Another organization's case is a 404.
 func (s *Service) Get(ctx context.Context, scope auth.OrgScope, id uuid.UUID) (dbgen.TestCase, error) {
-	found, err := s.store.GetTestCase(ctx, dbgen.GetTestCaseParams{OrgID: scope.OrgID, ID: id})
+	found, err := s.store.GetTestCase(ctx, dbgen.GetTestCaseParams{OrgID: scope.OrgID(), ID: id})
 	if err != nil {
 		if errors.Is(db.Classify(err), db.ErrNotFound) {
 			return dbgen.TestCase{}, httpx.NotFound("test case not found")
@@ -88,7 +88,7 @@ func (s *Service) SetStatus(ctx context.Context, scope auth.OrgScope, id uuid.UU
 	}
 
 	updated, err := s.store.SetTestCaseStatus(ctx, dbgen.SetTestCaseStatusParams{
-		OrgID: scope.OrgID, ID: id, Status: target,
+		OrgID: scope.OrgID(), ID: id, Status: target,
 	})
 	if err != nil {
 		return dbgen.TestCase{}, fmt.Errorf("set test case status: %w", db.Classify(err))

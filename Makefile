@@ -116,18 +116,30 @@ lint: lint-go lint-js lint-ci ## Lint everything
 
 .PHONY: lint-go
 lint-go: ## gofmt + go vet + golangci-lint on every Go module
-	@for m in $(GO_MODULES); do \
+	@# Every loop over $(GO_MODULES) accumulates `fail` and exits at the end.
+	@# Two reasons, and neither is style. A bare `for m in ...; do cmd; done`
+	@# reports only its LAST iteration's status, so without an explicit
+	@# `|| fail=1` per round the gate would depend on where a module sits in
+	@# GO_MODULES (LONG-22). The `-e` in .SHELLFLAGS does cover that today,
+	@# but only by aborting at the first failing module - which hides every
+	@# later module's findings, and stops covering it at all if those shell
+	@# flags are ever edited. Aggregating is correct under either.
+	@fail=0; \
+	for m in $(GO_MODULES); do \
 	  echo "==> gofmt $$m"; \
-	  out=$$(cd $$m && gofmt -l .); \
-	  if [ -n "$$out" ]; then echo "not gofmt'd:"; echo "$$out"; exit 1; fi; \
+	  out=$$(cd $$m && gofmt -l .) || { echo "gofmt failed in $$m" >&2; fail=1; out=; }; \
+	  if [ -n "$$out" ]; then echo "not gofmt'd:"; echo "$$out"; fail=1; fi; \
 	  echo "==> go vet $$m"; \
-	  (cd $$m && $(GO) vet ./...); \
-	done
+	  (cd $$m && $(GO) vet ./...) || fail=1; \
+	done; \
+	exit $$fail
 	@if [ -x "$(GOLANGCI)" ]; then \
+	  fail=0; \
 	  for m in $(GO_MODULES); do \
 	    echo "==> golangci-lint $$m"; \
-	    (cd $$m && "$(GOLANGCI)" run ./...); \
+	    (cd $$m && "$(GOLANGCI)" run ./...) || fail=1; \
 	  done; \
+	  exit $$fail; \
 	else \
 	  echo "note: golangci-lint not installed, ran gofmt + go vet only."; \
 	  echo "      install it with: make tools"; \
@@ -217,10 +229,14 @@ test: test-go test-js ## Run every test suite
 
 .PHONY: test-go
 test-go: ## go test on every Go module (database-backed tests skip)
-	@for m in $(GO_MODULES); do \
+	@# Aggregated, not fail-fast: see the note in lint-go. A red `test` job
+	@# should list every module that is broken, not just the first one.
+	@fail=0; \
+	for m in $(GO_MODULES); do \
 	  echo "==> go test $$m"; \
-	  (cd $$m && $(GO) test ./...); \
-	done
+	  (cd $$m && $(GO) test ./...) || fail=1; \
+	done; \
+	exit $$fail
 
 .PHONY: test-db
 test-db: .env ## go test with a real Postgres (needs `make up` + `make migrate-up`)
@@ -233,7 +249,11 @@ test-js: node_modules ## vitest across the pnpm workspace
 
 .PHONY: fmt
 fmt: ## Format Go sources in place
-	@for m in $(GO_MODULES); do (cd $$m && gofmt -w .); done
+	@# gofmt -w rarely fails, but when it does (unparseable file, read-only
+	@# tree) that must not be swallowed by the loop either.
+	@fail=0; \
+	for m in $(GO_MODULES); do (cd $$m && gofmt -w .) || fail=1; done; \
+	exit $$fail
 
 # ---------------------------------------------------------------------------
 # dev servers (run from source - the daemon must reach your own network)
