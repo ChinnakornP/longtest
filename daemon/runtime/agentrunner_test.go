@@ -45,7 +45,12 @@ func TestAFullRunWorksWithTheMockProvider(t *testing.T) {
 
 	h := newHarness(t, harnessOptions{agent: mockAgentRunner(t, mock)})
 	h.executor.onRun = func(params executor.TestcaseRunParams) qaschema.ExecutionResult {
-		return writeEvidence(t, params, map[string]string{"screenshot-1.png": "png"})
+		// Failing: the analysis phase only looks at failures, and this test is
+		// about the analysis phase reaching the CLI.
+		// dom-snapshot.png because the canned analysis in
+		// daemon/agent/testdata/mock cites it: the review gate checks a
+		// finding's citations against what the execution really produced.
+		return failWith(t, params, "the save button did nothing", map[string]string{"dom-snapshot.png": "png"})
 	}
 
 	h.backend.ExpectType(5*time.Second, qaschema.EnvelopeTypeHello)

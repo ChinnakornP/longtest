@@ -108,6 +108,26 @@ func writeEvidence(t *testing.T, params executor.TestcaseRunParams, files map[st
 	}
 }
 
+// failWith is writeEvidence's failing counterpart: a case that failed on its
+// first step, with a message the executor itself wrote.
+//
+// The analysis phase only looks at failures, so a test that wants a finding
+// has to produce one of these. A passing run has nothing to explain.
+func failWith(t *testing.T, params executor.TestcaseRunParams, message string, files map[string]string) qaschema.ExecutionResult {
+	t.Helper()
+
+	result := writeEvidence(t, params, files)
+	result.Result = qaschema.OutcomeFail
+	result.Message = ptr(message)
+	result.Steps = []qaschema.StepResult{{
+		Index:   0,
+		Action:  qaschema.StepActionClick,
+		Status:  qaschema.OutcomeFail,
+		Message: ptr(message),
+	}}
+	return result
+}
+
 // The acceptance criterion: evidence the executor produced reaches storage,
 // and run.result names artifacts that can actually be fetched.
 func TestRunUploadsEvidenceAndReportsIt(t *testing.T) {
