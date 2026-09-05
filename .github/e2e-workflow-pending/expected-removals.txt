@@ -1,0 +1,7 @@
+# Lines of .github/workflows/ci.yml that ci.yml here intentionally replaces.
+# Everything else it does must be an addition: `make check-parked-workflows`
+# fails on any other deletion, and on any entry below that the live file no
+# longer contains. Match is exact, indentation included.
+#
+# The `ci` gate job gains `e2e` in its `needs`, so its old list goes away.
+    needs: [lint, test, security, test-db]
