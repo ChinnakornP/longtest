@@ -126,6 +126,9 @@ type testCaseView struct {
 	Priority string    `json:"priority"`
 	Category string    `json:"category"`
 	Version  int       `json:"version"`
+	// Payload is only read by the payload-edit contract test; the planning
+	// assertions here are about which cases exist, not what is in them.
+	Payload json.RawMessage `json:"payload"`
 }
 
 func (p *planningEnv) testCases(t *testing.T) []testCaseView {

@@ -53,6 +53,27 @@ func (q *Queries) CountApprovedTestCasesByCategory(ctx context.Context, arg Coun
 	return items, nil
 }
 
+const countTestCaseVersions = `-- name: CountTestCaseVersions :one
+SELECT count(*) FROM test_case_versions
+WHERE org_id = $1 AND test_case_id = $2
+`
+
+type CountTestCaseVersionsParams struct {
+	OrgID      uuid.UUID
+	TestCaseID uuid.UUID
+}
+
+// The total behind a bounded version page. Counted rather than derived from
+// test_cases.current_version: the two agree today only because nothing deletes
+// a version row, and a report that quietly overstates its own history is worse
+// than one extra indexed count.
+func (q *Queries) CountTestCaseVersions(ctx context.Context, arg CountTestCaseVersionsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTestCaseVersions, arg.OrgID, arg.TestCaseID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countTestCases = `-- name: CountTestCases :one
 SELECT count(*) FROM test_cases
 WHERE org_id = $1
@@ -186,6 +207,41 @@ type GetTestCaseByRefParams struct {
 
 func (q *Queries) GetTestCaseByRef(ctx context.Context, arg GetTestCaseByRefParams) (TestCase, error) {
 	row := q.db.QueryRow(ctx, getTestCaseByRef, arg.OrgID, arg.ProjectID, arg.Ref)
+	var i TestCase
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.ProjectID,
+		&i.Ref,
+		&i.Name,
+		&i.Priority,
+		&i.Category,
+		&i.Status,
+		&i.Payload,
+		&i.CurrentVersion,
+		&i.SourceRunID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTestCaseForUpdate = `-- name: GetTestCaseForUpdate :one
+SELECT id, org_id, project_id, ref, name, priority, category, status, payload, current_version, source_run_id, created_at, updated_at FROM test_cases WHERE org_id = $1 AND id = $2 FOR UPDATE
+`
+
+type GetTestCaseForUpdateParams struct {
+	OrgID uuid.UUID
+	ID    uuid.UUID
+}
+
+// Read-modify-write on one case goes through this, never through GetTestCase.
+// A payload edit reads the row's review status and its current_version, judges
+// the caller's baseVersion against them, and only then writes; two reviewers
+// saving together must not both read version 3 and both conclude that their
+// edit is the one that applies.
+func (q *Queries) GetTestCaseForUpdate(ctx context.Context, arg GetTestCaseForUpdateParams) (TestCase, error) {
+	row := q.db.QueryRow(ctx, getTestCaseForUpdate, arg.OrgID, arg.ID)
 	var i TestCase
 	err := row.Scan(
 		&i.ID,

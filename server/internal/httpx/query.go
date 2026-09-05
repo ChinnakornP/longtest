@@ -38,6 +38,15 @@ func PageFrom(r *http.Request) (Page, error) {
 	return Page{Limit: limit, Offset: offset}, nil
 }
 
+// LimitFrom reads ?limit= on its own, for the few endpoints whose result set
+// is bounded but not paged — a test case's version history is read newest-first
+// and in full, and an offset over it would be a window onto a list that grows
+// from the front. The bounds are PageFrom's, so "limit" means the same thing
+// everywhere in this API.
+func LimitFrom(r *http.Request) (int32, error) {
+	return queryInt32(r, "limit", DefaultPageLimit, 1, MaxPageLimit)
+}
+
 func queryInt32(r *http.Request, name string, fallback, minimum, maximum int32) (int32, error) {
 	raw := strings.TrimSpace(r.URL.Query().Get(name))
 	if raw == "" {

@@ -608,6 +608,151 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
 
+  /api/v1/test-cases/{testCaseID}/payload:
+    put:
+      tags: [test-cases]
+      summary: Replace a draft test case's executable definition
+      description: |
+        The body carries the whole `test-case@1` document; a partial edit of a
+        contract document is not something this API can validate, which is why
+        this is a PUT and not a PATCH.
+
+        **Only a draft is editable.** An approved case is a regression contract:
+        rewriting its content under a new version while it stays approved would
+        silently change what every past result meant. The reviewer moves it back
+        to draft (`PATCH` status), edits, and re-approves.
+
+        `baseVersion` is the `version` the editor loaded, and it is an
+        optimistic lock, not a hint: a mismatch is a 409 rather than a silent
+        last write over another reviewer's edit. The row is locked `FOR UPDATE`
+        while it is checked, so two saves against the same version cannot both
+        succeed.
+
+        Server-owned fields the body cannot move:
+
+        - `payload.id` must equal the case's `ref`. It is what makes a result
+          comparable run over run, so a change to it is a 422, not a no-op.
+        - `payload.version` is the contract version (`const: 1`). It is
+          validated and never stored as the row's version, which the database
+          assigns.
+        - `payload.status` is ignored. The row's review state changes only
+          through `PATCH /api/v1/test-cases/{testCaseID}`.
+
+        `name`, `priority` and `category` move with the document, because the
+        project listing orders and filters on the row's copies of them.
+
+        A successful edit bumps `version` and appends one row to the case's
+        history. Re-sending an identical document is a no-op: the payloads
+        compare equal as `jsonb`, so no version is burned and no history row is
+        written.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - name: testCaseID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [baseVersion, payload]
+              properties:
+                baseVersion:
+                  type: integer
+                  minimum: 1
+                  description: The `version` the editor loaded. A mismatch is a 409.
+                payload:
+                  description: The whole replacement document, stored verbatim.
+                  $ref: 'https://qa.local/schema/test-case/1'
+      responses:
+        '200':
+          description: Updated. `version` is the newly assigned one.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestCase' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            The case is not a draft, or `baseVersion` is not its current
+            version. Nothing was written either way.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: |
+            The payload fails `test-case@1`, or it changes an immutable field.
+            Nothing was written.
+
+            A contract failure carries `error.details.errors[]`, one entry per
+            failing keyword, each locating the offending value by JSON Pointer
+            so an editor can highlight every bad field at once. At most 50
+            entries; `error.details.truncated` counts what was dropped.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      error:
+                        type: object
+                        properties:
+                          details:
+                            type: object
+                            properties:
+                              schema: { type: string, example: 'test-case@1' }
+                              truncated:
+                                type: integer
+                                description: Entries omitted from `errors`, absent when none were.
+                              errors:
+                                type: array
+                                items: { $ref: '#/components/schemas/SchemaViolation' }
+
+  /api/v1/test-cases/{testCaseID}/versions:
+    get:
+      tags: [test-cases]
+      summary: Read a test case's payload history
+      description: |
+        Newest first: `versions[0]` is the payload the case holds now, and
+        `total` is how many the case has in all, not how many this page
+        returned.
+
+        Every payload the case has ever had is here. The history is written by a
+        database trigger on every payload change, which is what lets a past
+        result be read against the exact definition that produced it.
+
+        There is deliberately no server-side diff and no restore: a diff of a
+        contract document is a presentation decision, and it is rendered
+        client-side from any two of these payloads.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - name: testCaseID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions, total]
+                properties:
+                  versions:
+                    type: array
+                    items: { $ref: '#/components/schemas/TestCaseVersion' }
+                  total:
+                    type: integer
+                    description: Every version this case has, not the size of this page.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /api/v1/runs:
     post:
       tags: [runs]
@@ -1135,6 +1280,35 @@ components:
           $ref: 'https://qa.local/schema/test-case/1'
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    TestCaseVersion:
+      type: object
+      required: [version, status, payload, createdAt]
+      description: |
+        One historical payload of a test case. It carries no id of its own: a
+        version is addressed by its case and its number.
+      properties:
+        version: { type: integer, minimum: 1 }
+        status:
+          allOf:
+            - $ref: '#/components/schemas/TestCaseStatus'
+          description: The review state the case was in when this payload was written.
+        payload:
+          description: The `test-case@1` document as it stood at this version.
+          $ref: 'https://qa.local/schema/test-case/1'
+        createdAt: { type: string, format: date-time }
+
+    SchemaViolation:
+      type: object
+      description: |
+        One failing schema keyword, located in both the instance and the
+        contract. `instancePath` is a JSON Pointer into the submitted document.
+      required: [instancePath, schemaPath, keyword, message]
+      properties:
+        instancePath: { type: string, example: '/steps/0/action' }
+        schemaPath: { type: string, example: '#/$defs/Step/properties/action/enum' }
+        keyword: { type: string, example: enum }
+        message: { type: string }
 
     RunMode:
       type: string

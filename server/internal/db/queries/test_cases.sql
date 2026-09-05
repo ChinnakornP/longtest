@@ -24,6 +24,14 @@ RETURNING *;
 -- name: GetTestCase :one
 SELECT * FROM test_cases WHERE org_id = $1 AND id = $2;
 
+-- Read-modify-write on one case goes through this, never through GetTestCase.
+-- A payload edit reads the row's review status and its current_version, judges
+-- the caller's baseVersion against them, and only then writes; two reviewers
+-- saving together must not both read version 3 and both conclude that their
+-- edit is the one that applies.
+-- name: GetTestCaseForUpdate :one
+SELECT * FROM test_cases WHERE org_id = $1 AND id = $2 FOR UPDATE;
+
 -- name: GetTestCaseByRef :one
 SELECT * FROM test_cases WHERE org_id = $1 AND project_id = $2 AND ref = $3;
 
@@ -75,6 +83,14 @@ SELECT * FROM test_case_versions
 WHERE org_id = $1 AND test_case_id = $2
 ORDER BY version DESC
 LIMIT $3;
+
+-- The total behind a bounded version page. Counted rather than derived from
+-- test_cases.current_version: the two agree today only because nothing deletes
+-- a version row, and a report that quietly overstates its own history is worse
+-- than one extra indexed count.
+-- name: CountTestCaseVersions :one
+SELECT count(*) FROM test_case_versions
+WHERE org_id = $1 AND test_case_id = $2;
 
 -- name: GetTestCaseVersion :one
 SELECT * FROM test_case_versions
