@@ -111,7 +111,13 @@ jobs:
   security:
     name: security
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # This job now does real work: the scans, the Go boundary suite (T12) and a
+    # full production build of apps/web (T18). Measured on run 33936944291 the
+    # scans alone were 11s; the added Go and Node work lands the whole job
+    # around two minutes warm, and well under five on a cold toolchain cache.
+    # 15 keeps a runaway build bounded without making a slow cache flaky, and
+    # matches `lint` and `test`.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -136,6 +142,101 @@ jobs:
             exit 1
           fi
           echo "no .env is tracked"
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: server/go.mod
+          cache: false
+
+      - name: Cache Go modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-security-${{ runner.os }}-${{ hashFiles('**/go.mod', '**/go.sum') }}
+          restore-keys: go-security-${{ runner.os }}-
+
+      # These also run inside `test`, as part of `go test ./...`. They are
+      # repeated here so that a boundary regression shows up as a red
+      # `security` check rather than as one line inside a general test run: the
+      # point of a named gate is that a reviewer can see which one failed
+      # without opening the log.
+      #
+      # The sandbox tests need a kernel with Landlock (5.13+). ubuntu-latest
+      # has it; if a future runner image does not, they skip loudly rather than
+      # pass silently, and `Assert the sandbox was really exercised` below
+      # turns that skip into a failure.
+      - name: Prompt-injection corpus and security boundary
+        run: |
+          # pipefail is not on by default in an Actions `run` block, and
+          # without it `go test | tee` reports tee's exit status: a failing
+          # boundary test would land as a green check.
+          set -euo pipefail
+          cd daemon
+          go test ./security/... ./agent/prompts/... -count=1 -v 2>&1 | tee ../security-test.log
+          echo "--- summary ---"
+          grep -cE '^\s*--- PASS' ../security-test.log
+
+      - name: Assert the sandbox was really exercised
+        # A skipped confinement test is indistinguishable from a passing one in
+        # the exit code, and "the AI CLI cannot read outside its workspace" is
+        # the claim in docs/SECURITY.md that most needs to be true.
+        run: |
+          set -euo pipefail
+          if grep -qE '^\s*--- SKIP: TestSandboxConfines' security-test.log; then
+            echo "::error::the filesystem confinement tests skipped - this runner has no usable Landlock"
+            grep -E '^\s*--- SKIP' security-test.log
+            exit 1
+          fi
+          for required in \
+            TestSandboxConfinesReadsToTheWorkspace \
+            TestSandboxConfinesWritesToTheWorkspace \
+            TestCorpusCannotReachTheInstructionRegion \
+            TestCorpusHijackedPlansAreRejected \
+            TestNothingLeaksACredentialAcrossAWholeRun; do
+            if ! grep -qE "^\s*--- PASS: $required" security-test.log; then
+              echo "::error::$required did not pass - see docs/SECURITY.md"
+              exit 1
+            fi
+          done
+          echo "every named security gate passed"
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Web production build ships no server routes
+        # apps/web is a client of the Go backend, never a backend itself
+        # (docs/adr/0008-web-ships-no-backend.md). The T05 mock
+        # (route.mock.ts) is excluded by pageExtensions in a production
+        # build; this asserts the build output, not the intent. The guard
+        # outlives the mock: it must still pass once T05 is deleted.
+        env:
+          # Not a real endpoint and never fetched - the build only needs a
+          # non-empty value, because resolveApiBase() throws when
+          # NEXT_PUBLIC_API_BASE_URL is unset in a production build.
+          NEXT_PUBLIC_API_BASE_URL: https://api.invalid
+        run: |
+          set -euo pipefail
+          pnpm --filter @qa/web run build
+          manifest=apps/web/.next/app-path-routes-manifest.json
+          if [ ! -f "$manifest" ]; then
+            echo "::error::$manifest is missing - the guard cannot read the build output, so it fails closed"
+            exit 1
+          fi
+          if grep -q '"/api/' "$manifest"; then
+            echo "::error::apps/web production build emitted API route handlers - apps/web must not ship a backend (docs/adr/0008-web-ships-no-backend.md)"
+            grep -o '"/api[^"]*"' "$manifest"
+            exit 1
+          fi
+          echo "no /api route handlers in the web production build"
 
   test-db:
     # Split out from `test` because it needs a Postgres service: `make test-go`
@@ -190,3 +291,30 @@ jobs:
           # server, so it needs the maintenance database, not a migrated one.
           TEST_DATABASE_URL: postgres://qa:ci-only-not-a-secret@127.0.0.1:5432/qa?sslmode=disable
         run: cd server && go test ./... -count=1
+
+  # One check to require in branch protection.
+  #
+  # Requiring each job by name means every new job has to be added to the
+  # protection rule by hand, and a job that is silently missing from that list
+  # is a gate that is not a gate. This one depends on all of them, so a new job
+  # is covered the moment it is added to `needs`.
+  #
+  # Branch protection on `main` must require: `ci` (this job). Setting that is
+  # a repository-settings change and cannot be done from a workflow file.
+  ci:
+    name: ci
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [lint, test, security, test-db]
+    steps:
+      - name: Every gate passed
+        run: |
+          results='${{ join(needs.*.result, " ") }}'
+          echo "job results: $results"
+          for r in $results; do
+            if [ "$r" != "success" ]; then
+              echo "::error::a required job did not succeed ($results)"
+              exit 1
+            fi
+          done
