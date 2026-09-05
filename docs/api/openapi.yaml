@@ -1217,10 +1217,30 @@ components:
 
     Artifact:
       type: object
+      description: |
+        One piece of evidence as the report hands it over.
+
+        `id` IS the artifact a finding cites. `Finding.evidence[]` carries whole
+        Artifact objects rather than bare ids, so rendering a finding's evidence
+        needs no second request and no client-side join. The run-local
+        `artifactId` handle in `finding@1` — the string the daemon invents so
+        that steps, assertions and findings can point at the same file before
+        anything has been stored — is resolved to this uuid at ingest and never
+        reaches a client.
       required: [id, kind, name, contentType, createdAt]
       properties:
-        id: { type: string, format: uuid }
-        kind: { type: string, enum: [screenshot, video, trace, network, console, dom, report] }
+        id:
+          type: string
+          format: uuid
+          description: The artifact id, and what `Finding.evidence[].id` means.
+        kind:
+          type: string
+          enum: [screenshot, video, trace, network, console, dom, report]
+          description: |
+            An analyst cites `screenshot`, `dom`, `console`, `network` and
+            `trace`. `video` and `report` exist too — they are produced by the
+            executor and the reporter rather than by analysis — so a client
+            that switches on this must handle all seven.
         name: { type: string }
         contentType: { type: string }
         sizeBytes: { type: integer, format: int64 }
@@ -1228,91 +1248,197 @@ components:
         url:
           type: string
           format: uri
-          description: A presigned GET, minted per request. Absent when object storage is not configured.
-        urlExpiresAt: { type: string, format: date-time }
+          description: |
+            A presigned GET the client opens directly, minted per request and
+            valid for minutes. A client never composes this from a storage key:
+            the key layout is a backend boundary and is deliberately not in this
+            contract. Absent only where there is genuinely no link to give — a
+            deployment with no object storage configured — and the artifact is
+            still listed with its metadata rather than hidden, because the
+            metadata is useful on its own.
+        urlExpiresAt:
+          type: string
+          format: date-time
+          description: When `url` stops working. Re-fetch the report to mint a fresh one.
+        createdAt: { type: string, format: date-time }
+
+    ExecutionStep:
+      type: object
+      required: [index, action, result, unstable]
+      properties:
+        index:
+          type: integer
+          description: Position in the test case's own steps array, 0-based. This is what `Finding.stepIndex` points at.
+        action:
+          type: string
+          description: |
+            The step action from `test-case@1`. Text rather than an enum on
+            purpose: adding an action is then a contract change rather than a
+            migration.
+        result: { type: string, enum: [pending, running, pass, fail, skipped, error] }
+        unstable:
+          type: boolean
+          description: The step used a raw locator instead of an application-map ref. Those rot, and a TEST_BUG finding usually points here.
+        errorMessage: { type: string }
+        durationMs: { type: integer }
+        target:
+          type: object
+          description: The step's target as the test case declared it — `{ref}` or `{locator, unstable}`.
+
+    ExecutionAssertion:
+      type: object
+      required: [index, type, status]
+      properties:
+        index: { type: integer }
+        type: { type: string }
+        status: { type: string, enum: [pending, running, pass, fail, skipped, error] }
+        expected: { type: string }
+        actual:
+          type: string
+          description: Observed value, lifted off the application under test. Render it as data, never as markup.
+        message: { type: string }
+
+    ReportExecution:
+      type: object
+      description: One test case's run. `id` is the join key `Finding.executionId` carries.
+      required: [id, testCaseId, testCaseRef, result, steps, assertions, artifacts]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The execution id. `findings[].executionId` equals this, and it is the only join a client needs to pair a finding with its execution.
+        testCaseId: { type: string, format: uuid }
+        testCaseRef:
+          type: string
+          description: The ref the test case carries in its own document (TC-001), which is what the daemon names artifacts after.
+        name: { type: string }
+        priority: { type: string }
+        category: { type: string }
+        testCaseVersion: { type: integer }
+        result: { type: string, enum: [pending, running, pass, fail, skipped, error] }
+        failureClass:
+          allOf:
+            - $ref: '#/components/schemas/FailureClass'
+          description: |
+            The executor's own class, set only where the harness could tell
+            without analysis. The analyst's verdict is `findings[].failureClass`
+            and it is the one to show: this one is absent on most failures.
+        errorMessage: { type: string }
+        durationMs: { type: integer }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/ExecutionStep' }
+        assertions:
+          type: array
+          items: { $ref: '#/components/schemas/ExecutionAssertion' }
+        artifacts:
+          type: array
+          description: Everything captured for this execution, whether or not a finding cites it.
+          items: { $ref: '#/components/schemas/Artifact' }
+
+    Finding:
+      type: object
+      description: |
+        What the Failure Analyst concluded about one failed execution.
+
+        Every failed execution has exactly one. A failure with no finding is the
+        outcome this whole contract exists to prevent — "23 tests failed" with
+        nothing said about any of them — so a client that finds a failed
+        execution missing from this list is looking at a bug, not at a case the
+        analyst had no opinion about. The honest no-opinion answer is a finding
+        with `failureClass: UNKNOWN`.
+      required: [id, failureClass, rootCause, confidence, evidence, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        executionId:
+          type: string
+          format: uuid
+          description: |
+            The execution this is about — `executions[].id`. Absent only for a
+            finding about a test case that never produced an execution, which
+            is rare enough that a client may treat it as a footnote.
+        testCaseId: { type: string, format: uuid }
+        stepIndex:
+          type: integer
+          description: |
+            The step the analyst blames, matching `ExecutionStep.index`. Absent
+            when the failure belongs to the case as a whole rather than to one
+            step; that is a real answer, not missing data.
+        failureClass: { $ref: '#/components/schemas/FailureClass' }
+        summary:
+          type: string
+          maxLength: 500
+          description: One-line headline for a list. May be empty; `rootCause` never is.
+        rootCause:
+          type: string
+          description: The reasoning, in prose. Model-authored — render it as text, never as markup.
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: |
+            The analyst's own confidence, 0..1. Shown to the user and never used
+            to silently drop a finding: a verdict the analyst was unsure of is
+            downgraded to UNKNOWN before it is stored, so a low number here is
+            information rather than a reason to hide the row.
+        suggestedFix:
+          type: string
+          description: Optional. Model-authored prose, same rendering rule as `rootCause`.
+        analyzedBy:
+          type: object
+          description: |
+            Which AI CLI produced this verdict. Absent on a finding the
+            deterministic rule pass classified without calling a model at all,
+            which is the normal case for network, auth and timeout failures.
+          required: [provider]
+          properties:
+            provider: { type: string, enum: [claude, opencode, antigravity] }
+            version: { type: string }
+        evidence:
+          type: array
+          minItems: 1
+          description: |
+            The artifacts this finding cites, as whole objects with openable
+            URLs. Never empty: a finding with no evidence is a guess, and one
+            citing an artifact the execution does not have is rejected at the
+            daemon before it is ever stored.
+          items: { $ref: '#/components/schemas/Artifact' }
         createdAt: { type: string, format: date-time }
 
     Report:
       type: object
+      description: |
+        A run's full report: every execution with its steps, assertions and
+        evidence, plus what the analyst concluded about the failures.
+
+        Two arrays rather than findings nested inside executions, because a
+        finding is a separate authorship with its own lifetime — re-analysis
+        replaces it, and the execution it describes does not change. Join them
+        on `findings[].executionId` = `executions[].id`.
       required: [run, executions, findings, artifacts]
       properties:
         run: { $ref: '#/components/schemas/Run' }
         executions:
           type: array
-          items:
-            type: object
-            required: [id, testCaseId, testCaseRef, result, steps, assertions, artifacts]
-            properties:
-              id: { type: string, format: uuid }
-              testCaseId: { type: string, format: uuid }
-              testCaseRef: { type: string }
-              name: { type: string }
-              priority: { type: string }
-              category: { type: string }
-              testCaseVersion: { type: integer }
-              result: { type: string, enum: [pending, running, pass, fail, skipped, error] }
-              failureClass: { $ref: '#/components/schemas/FailureClass' }
-              errorMessage: { type: string }
-              durationMs: { type: integer }
-              startedAt: { type: string, format: date-time }
-              finishedAt: { type: string, format: date-time }
-              steps:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    index: { type: integer }
-                    action: { type: string }
-                    result: { type: string }
-                    unstable: { type: boolean }
-                    errorMessage: { type: string }
-                    durationMs: { type: integer }
-                    target: { type: object }
-              assertions:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    index: { type: integer }
-                    type: { type: string }
-                    status: { type: string }
-                    expected: { type: string }
-                    actual: { type: string }
-                    message: { type: string }
-              artifacts:
-                type: array
-                items: { $ref: '#/components/schemas/Artifact' }
+          items: { $ref: '#/components/schemas/ReportExecution' }
         findings:
           type: array
-          items:
-            type: object
-            required: [id, failureClass, rootCause, confidence, evidence]
-            properties:
-              id: { type: string, format: uuid }
-              executionId: { type: string, format: uuid }
-              testCaseId: { type: string, format: uuid }
-              stepIndex: { type: integer }
-              failureClass: { $ref: '#/components/schemas/FailureClass' }
-              summary: { type: string }
-              rootCause: { type: string }
-              confidence: { type: number, minimum: 0, maximum: 1 }
-              suggestedFix: { type: string }
-              analyzedBy:
-                type: object
-                properties:
-                  provider: { type: string, enum: [claude, opencode, antigravity] }
-                  version: { type: string }
-              evidence:
-                type: array
-                items: { $ref: '#/components/schemas/Artifact' }
-              createdAt: { type: string, format: date-time }
+          description: Ordered by confidence, highest first. One per failed execution.
+          items: { $ref: '#/components/schemas/Finding' }
         artifacts:
           type: array
-          description: Run-level evidence that belongs to no single execution.
+          description: Run-level evidence that belongs to no single execution, such as a discovery HAR.
           items: { $ref: '#/components/schemas/Artifact' }
 
     FailureClass:
       type: string
+      description: |
+        Frozen at v1. UNKNOWN is the honest answer when the evidence does not
+        support a verdict; a client that meets a class it does not recognise
+        must fail loudly rather than bucket it as UNKNOWN, or a future class
+        becomes invisible in the UI.
       enum: [PRODUCT_BUG, TEST_BUG, ENVIRONMENT_ERROR, NETWORK_ERROR, AUTHENTICATION_ERROR, TIMEOUT, UNKNOWN]
 
 # OpenAPI 3.1 cannot describe a WebSocket, and leaving the control plane out
