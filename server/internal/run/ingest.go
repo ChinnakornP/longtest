@@ -70,7 +70,7 @@ func (s *Service) RunResult(ctx context.Context, rc auth.RuntimeCaller, runID uu
 	var finished dbgen.Run
 	var plan *planOutcome
 	err := s.store.WithTx(ctx, func(q *dbgen.Queries) error {
-		current, err := q.GetRunForUpdate(ctx, dbgen.GetRunForUpdateParams{OrgID: rc.OrgID, ID: runID})
+		current, err := q.GetRunForUpdate(ctx, dbgen.GetRunForUpdateParams{OrgID: rc.OrgID(), ID: runID})
 		if err != nil {
 			if errors.Is(db.Classify(err), db.ErrNotFound) {
 				return &realtime.ProtocolError{Reason: "that run does not exist"}
@@ -79,13 +79,13 @@ func (s *Service) RunResult(ctx context.Context, rc auth.RuntimeCaller, runID uu
 		}
 		// Re-checked under the row lock: the run could have been reassigned
 		// between the ownership check above and this transaction.
-		if !current.RuntimeID.Valid || current.RuntimeID.UUID != rc.RuntimeID {
+		if !current.RuntimeID.Valid || current.RuntimeID.UUID != rc.RuntimeID() {
 			return &realtime.ProtocolError{Reason: "that run is not assigned to this runtime"}
 		}
 
 		ingest := &ingestion{
 			q:               q,
-			orgID:           rc.OrgID,
+			orgID:           rc.OrgID(),
 			run:             current,
 			artifacts:       map[string]uuid.UUID{},
 			testCases:       map[string]dbgen.TestCase{},
@@ -97,7 +97,7 @@ func (s *Service) RunResult(ctx context.Context, rc auth.RuntimeCaller, runID uu
 		}
 		plan = ingest.plan
 
-		refreshed, err := q.RefreshRunCounters(ctx, dbgen.RefreshRunCountersParams{OrgID: rc.OrgID, ID: runID})
+		refreshed, err := q.RefreshRunCounters(ctx, dbgen.RefreshRunCountersParams{OrgID: rc.OrgID(), ID: runID})
 		if err != nil {
 			return fmt.Errorf("refresh run counters: %w", db.Classify(err))
 		}
@@ -147,7 +147,7 @@ func (s *Service) failRejectedPlan(ctx context.Context, rc auth.RuntimeCaller, r
 
 	var finished dbgen.Run
 	err := s.store.WithTx(ctx, func(q *dbgen.Queries) error {
-		current, err := q.GetRunForUpdate(ctx, dbgen.GetRunForUpdateParams{OrgID: rc.OrgID, ID: runID})
+		current, err := q.GetRunForUpdate(ctx, dbgen.GetRunForUpdateParams{OrgID: rc.OrgID(), ID: runID})
 		if err != nil {
 			if errors.Is(db.Classify(err), db.ErrNotFound) {
 				return &realtime.ProtocolError{Reason: "that run does not exist"}
@@ -160,11 +160,11 @@ func (s *Service) failRejectedPlan(ctx context.Context, rc auth.RuntimeCaller, r
 			return nil
 		}
 
-		if err := appendServerEvent(ctx, q, rc.OrgID, current, planRejectedEvent(rejected)); err != nil {
+		if err := appendServerEvent(ctx, q, rc.OrgID(), current, planRejectedEvent(rejected)); err != nil {
 			return err
 		}
 		finished, err = q.FinishRun(ctx, dbgen.FinishRunParams{
-			OrgID:        rc.OrgID,
+			OrgID:        rc.OrgID(),
 			ID:           runID,
 			Status:       dbgen.RunStatusError,
 			ErrorCode:    string(qaschema.RunErrorCodeAgentOutputInvalid),
@@ -195,12 +195,12 @@ func (s *Service) narratePlan(ctx context.Context, rc auth.RuntimeCaller, runID 
 	if plan == nil {
 		return
 	}
-	current, err := s.store.GetRun(ctx, dbgen.GetRunParams{OrgID: rc.OrgID, ID: runID})
+	current, err := s.store.GetRun(ctx, dbgen.GetRunParams{OrgID: rc.OrgID(), ID: runID})
 	if err != nil {
 		return
 	}
 	if err := s.store.WithTx(ctx, func(q *dbgen.Queries) error {
-		return appendServerEvent(ctx, q, rc.OrgID, current, planStoredEvent(plan))
+		return appendServerEvent(ctx, q, rc.OrgID(), current, planStoredEvent(plan))
 	}); err != nil {
 		httpx.LoggerFrom(ctx).WarnContext(ctx, "could not record the plan outcome",
 			"err", err, "run_id", runID)

@@ -537,13 +537,13 @@ func round2(v float64) float64 {
 // the pure function above testable against a hand-written map.
 func (s *Service) CoverageFor(ctx context.Context, scope auth.OrgScope, projectID uuid.UUID, appMap qaschema.ApplicationMap) (CoverageReport, error) {
 	rows, err := s.store.ListApprovedTestCasePayloads(ctx, dbgen.ListApprovedTestCasePayloadsParams{
-		OrgID: scope.OrgID, ProjectID: projectID,
+		OrgID: scope.OrgID(), ProjectID: projectID,
 	})
 	if err != nil {
 		return CoverageReport{}, fmt.Errorf("list approved test cases: %w", db.Classify(err))
 	}
 	counts, err := s.store.CountApprovedTestCasesByCategory(ctx, dbgen.CountApprovedTestCasesByCategoryParams{
-		OrgID: scope.OrgID, ProjectID: projectID,
+		OrgID: scope.OrgID(), ProjectID: projectID,
 	})
 	if err != nil {
 		return CoverageReport{}, fmt.Errorf("count approved test cases: %w", db.Classify(err))

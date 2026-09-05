@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ChinnakornP/longtest/server/internal/artifact"
-	"github.com/ChinnakornP/longtest/server/internal/auth"
 	"github.com/ChinnakornP/longtest/server/internal/db"
 	"github.com/ChinnakornP/longtest/server/internal/db/dbgen"
 	"github.com/ChinnakornP/longtest/server/internal/httpx"
@@ -81,10 +80,14 @@ func cancelPayload() qaschema.RunCancelPayload {
 // That is deliberate: the daemon is on the far side of a NAT with one outbound
 // socket, and a work item it has to fetch in pieces is a work item that fails
 // halfway.
+//
+// There is no auth.OrgScope here and there cannot be one: this runs on the
+// scheduler, not on a request, so there is no caller whose membership auth
+// could have verified. The org id is the one on the run row the scheduler
+// claimed, and the project reads below take it as a plain argument through
+// the project service's System* methods (ADR-007).
 func (s *Service) buildAssignFrame(ctx context.Context, claimed dbgen.Run) ([]byte, error) {
-	scope := auth.OrgScope{OrgID: claimed.OrgID}
-
-	project, err := s.projects.Get(ctx, scope, claimed.ProjectID)
+	project, err := s.projects.SystemGet(ctx, claimed.OrgID, claimed.ProjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +105,7 @@ func (s *Service) buildAssignFrame(ctx context.Context, claimed dbgen.Run) ([]by
 	// discovered yet simply has none — that is the ordinary first run, not a
 	// failure, so the not-found the project service returns is swallowed here.
 	if claimed.Mode != dbgen.RunModeDiscover {
-		appMap, err := s.projects.ApplicationMap(ctx, scope, claimed.ProjectID)
+		appMap, err := s.projects.SystemApplicationMap(ctx, claimed.OrgID, claimed.ProjectID)
 		switch {
 		case err == nil:
 			payload.AppMap = &appMap

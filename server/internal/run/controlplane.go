@@ -20,7 +20,7 @@ import (
 
 // This file implements realtime.ControlPlane. Every method takes the
 // auth.RuntimeCaller its connection's token resolved to, and every query below
-// binds rc.OrgID. Nothing a daemon sends can widen that: a frame naming
+// binds rc.OrgID(). Nothing a daemon sends can widen that: a frame naming
 // another tenant's run reaches a query that was given this tenant's org id and
 // finds no row.
 
@@ -38,8 +38,8 @@ func (s *Service) Hello(ctx context.Context, rc auth.RuntimeCaller, payload qasc
 	}
 
 	if _, err := s.store.RecordRuntimeHello(ctx, dbgen.RecordRuntimeHelloParams{
-		OrgID:    rc.OrgID,
-		ID:       rc.RuntimeID,
+		OrgID:    rc.OrgID(),
+		ID:       rc.RuntimeID(),
 		Version:  payload.Version,
 		Browsers: browsers,
 		Agents:   agents,
@@ -56,7 +56,7 @@ func (s *Service) Hello(ctx context.Context, rc auth.RuntimeCaller, payload qasc
 // heartbeat that loses a race with a status change must not roll that change
 // back.
 func (s *Service) Heartbeat(ctx context.Context, rc auth.RuntimeCaller, payload qaschema.HeartbeatPayload) error {
-	if _, err := s.store.TouchRuntime(ctx, dbgen.TouchRuntimeParams{OrgID: rc.OrgID, ID: rc.RuntimeID}); err != nil {
+	if _, err := s.store.TouchRuntime(ctx, dbgen.TouchRuntimeParams{OrgID: rc.OrgID(), ID: rc.RuntimeID()}); err != nil {
 		return fmt.Errorf("touch runtime: %w", db.Classify(err))
 	}
 	if len(payload.ActiveRuns) == 0 {
@@ -76,7 +76,7 @@ func (s *Service) Heartbeat(ctx context.Context, rc auth.RuntimeCaller, payload 
 	// naming a run held by a different daemon in the same organization extends
 	// nothing.
 	if _, err := s.store.HeartbeatRunsForRuntime(ctx, dbgen.HeartbeatRunsForRuntimeParams{
-		OrgID: rc.OrgID, RuntimeID: uuid.NullUUID{UUID: rc.RuntimeID, Valid: true}, Ids: ids,
+		OrgID: rc.OrgID(), RuntimeID: uuid.NullUUID{UUID: rc.RuntimeID(), Valid: true}, Ids: ids,
 	}); err != nil {
 		return fmt.Errorf("refresh run leases: %w", db.Classify(err))
 	}
@@ -119,7 +119,7 @@ func (s *Service) RunEvent(ctx context.Context, rc auth.RuntimeCaller, runID uui
 	}
 
 	inserted, err := s.store.AppendRunEvent(ctx, dbgen.AppendRunEventParams{
-		OrgID:   rc.OrgID,
+		OrgID:   rc.OrgID(),
 		RunID:   runID,
 		Seq:     seq,
 		Phase:   payload.Phase,
@@ -160,11 +160,11 @@ func (s *Service) advanceProgress(ctx context.Context, rc auth.RuntimeCaller, cu
 	var err error
 	if current.Status == dbgen.RunStatusAssigned {
 		updated, err = s.store.MarkRunRunning(ctx, dbgen.MarkRunRunningParams{
-			OrgID: rc.OrgID, ID: current.ID, Phase: phase,
+			OrgID: rc.OrgID(), ID: current.ID, Phase: phase,
 		})
 	} else {
 		if _, err = s.store.SetRunPhase(ctx, dbgen.SetRunPhaseParams{
-			OrgID: rc.OrgID, ID: current.ID, Phase: phase,
+			OrgID: rc.OrgID(), ID: current.ID, Phase: phase,
 		}); err == nil {
 			updated = current
 			updated.Phase = phase
@@ -190,18 +190,18 @@ func (s *Service) advanceProgress(ctx context.Context, rc auth.RuntimeCaller, cu
 // back, and this only records that the runtime is no longer reporting.
 func (s *Service) RuntimeDisconnected(ctx context.Context, rc auth.RuntimeCaller) {
 	inFlight, err := s.store.ListInFlightRunsForRuntime(ctx, dbgen.ListInFlightRunsForRuntimeParams{
-		OrgID: rc.OrgID, RuntimeID: uuid.NullUUID{UUID: rc.RuntimeID, Valid: true},
+		OrgID: rc.OrgID(), RuntimeID: uuid.NullUUID{UUID: rc.RuntimeID(), Valid: true},
 	})
 	if err != nil {
 		httpx.LoggerFrom(ctx).WarnContext(ctx, "could not list in-flight runs for a disconnected runtime",
-			"err", db.Classify(err), "runtime_id", rc.RuntimeID)
+			"err", db.Classify(err), "runtime_id", rc.RuntimeID())
 		return
 	}
 	if len(inFlight) == 0 {
 		return
 	}
 	httpx.LoggerFrom(ctx).InfoContext(ctx, "runtime disconnected with runs in flight",
-		"runtime_id", rc.RuntimeID, "runs", len(inFlight),
+		"runtime_id", rc.RuntimeID(), "runs", len(inFlight),
 		"lease_expires_in", s.cfg.OnlineWithin.String())
 }
 
@@ -216,7 +216,7 @@ func (s *Service) RuntimeDisconnected(ctx context.Context, rc auth.RuntimeCaller
 // misconfigured or hostile daemon stops.
 func (s *Service) runForRuntime(ctx context.Context, rc auth.RuntimeCaller, runID uuid.UUID) (dbgen.Run, error) {
 	found, err := s.store.GetRunForRuntime(ctx, dbgen.GetRunForRuntimeParams{
-		OrgID: rc.OrgID, ID: runID, RuntimeID: uuid.NullUUID{UUID: rc.RuntimeID, Valid: true},
+		OrgID: rc.OrgID(), ID: runID, RuntimeID: uuid.NullUUID{UUID: rc.RuntimeID(), Valid: true},
 	})
 	if err != nil {
 		if errors.Is(db.Classify(err), db.ErrNotFound) {

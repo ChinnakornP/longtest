@@ -182,10 +182,10 @@ func (s *Sessions) Authenticate(ctx context.Context, token string) (Caller, erro
 	s.touch(ctx, row.Session)
 
 	return Caller{
-		UserID:    row.User.ID,
-		SessionID: row.Session.ID,
-		Email:     row.User.Email,
-		Name:      row.User.Name,
+		userID:    row.User.ID,
+		sessionID: row.Session.ID,
+		email:     row.User.Email,
+		name:      row.User.Name,
 	}, nil
 }
 
