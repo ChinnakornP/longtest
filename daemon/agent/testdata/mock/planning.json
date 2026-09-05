@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "testCases": [
+    {
+      "version": 1,
+      "id": "TC-900",
+      "name": "The home page renders",
+      "priority": "medium",
+      "category": "navigation",
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/"
+        }
+      ],
+      "assertions": [
+        {
+          "type": "noConsoleError"
+        }
+      ]
+    }
+  ],
+  "rationale": "Smoke test only.",
+  "coverageNotes": "Nothing beyond the landing page."
+}

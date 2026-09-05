@@ -1,0 +1,16 @@
+[
+  {
+    "version": 1,
+    "testCaseId": "TC-102",
+    "stepIndex": 1,
+    "failureClass": "TEST_BUG",
+    "rootCause": "The step targets emp.btn.add, but the application map entry for that ref was last seen two runs ago and the page now renders the control inside a menu. The test is wrong, not the product.",
+    "confidence": 0.71,
+    "evidence": [
+      "dom-snapshot"
+    ],
+    "analyzedBy": {
+      "provider": "claude"
+    }
+  }
+]
