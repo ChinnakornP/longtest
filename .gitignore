@@ -25,7 +25,13 @@ node_modules/
 out/
 dist/
 build/
-coverage/
+# vitest --coverage writes to a `coverage/` dir at each package root (see the
+# per-package vitest.config.ts files) - anchored per package instead of a bare
+# `coverage/` so it can't shadow a source path with that name anywhere else in
+# the tree, e.g. apps/web/src/app/.../coverage/*.tsx (see LONG-18's PR #20).
+/apps/*/coverage/
+/packages/*/coverage/
+/daemon/*/coverage/
 *.tsbuildinfo
 .eslintcache
 .turbo/
