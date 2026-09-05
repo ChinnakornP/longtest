@@ -5,7 +5,10 @@ the functional, validation, navigation, ui_behavior and error_handling
 categories. Prefer element refs from the map over invented locators; when you
 must invent one, mark it `unstable: true`.
 
-Output schema: `{{.OutputSchema}}`
+Output schema: `{{.OutputSchema}}`{{if .OutputSchemaFile}}
+The contract itself is in `{{.OutputSchemaFile}}` in this directory. Read it
+first: every property name, enum member and required field is in there, and an
+answer that guesses at them is rejected without reaching a human.{{end}}
 Allowed origins: {{range $i, $o := .AllowedOrigins}}{{if $i}}, {{end}}`{{$o}}`{{end}}
 Known fixtures: {{if .FixtureNames}}{{range $i, $f := .FixtureNames}}{{if $i}}, {{end}}`fixture:{{$f}}`{{end}}{{else}}(none){{end}}
 

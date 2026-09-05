@@ -57,6 +57,36 @@ type Config struct {
 	LogPath string `json:"logPath,omitempty"`
 
 	Retention RetentionConfig `json:"retention,omitzero"`
+	Agent     AgentConfig     `json:"agent,omitzero"`
+}
+
+// AgentConfig is how an operator picks and bounds the AI CLI. Every field has
+// a working default: a paired runtime with no `agent` block at all drives
+// whichever CLI it finds installed and authenticated.
+type AgentConfig struct {
+	// Default names the CLI a run gets when it asks for none. Empty means the
+	// first usable one in registration order.
+	Default string `json:"default,omitempty"`
+	// Model overrides the model the CLI would otherwise choose for itself.
+	Model string `json:"model,omitempty"`
+	// TimeoutMinutes bounds one invocation. Zero means the package default.
+	TimeoutMinutes int `json:"timeoutMinutes,omitempty"`
+	// MaxAttempts is invocations per phase, including the first. Zero means
+	// the package default of one try plus two retries.
+	MaxAttempts int `json:"maxAttempts,omitempty"`
+	// AllowUnsandboxed lets an AI CLI run on a host that cannot enforce the
+	// process sandbox — macOS and Windows today. It is opt-in, reported in
+	// `hello`, and logged once per run, because the same binary on Linux
+	// would have been confined to the run workspace.
+	AllowUnsandboxed bool `json:"allowUnsandboxed,omitempty"`
+}
+
+// Timeout is the configured invocation limit, or zero for the default.
+func (a AgentConfig) Timeout() time.Duration {
+	if a.TimeoutMinutes <= 0 {
+		return 0
+	}
+	return time.Duration(a.TimeoutMinutes) * time.Minute
 }
 
 // RetentionConfig is the workspace retention policy in units an operator can

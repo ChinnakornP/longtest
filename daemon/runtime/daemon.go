@@ -172,7 +172,7 @@ func New(cfg Config, deps Deps) (*Daemon, error) {
 		deps.Backoff = DefaultBackoff()
 	}
 
-	return &Daemon{
+	d := &Daemon{
 		cfg:       cfg,
 		deps:      deps,
 		logger:    deps.Logger,
@@ -181,7 +181,19 @@ func New(cfg Config, deps Deps) (*Daemon, error) {
 		seq:       newSeqAllocator(),
 		runs:      newRunRegistry(64),
 		startedAt: deps.Now(),
-	}, nil
+	}
+
+	// A provider that can narrate its retries gets wired into the run's event
+	// stream. It is opt-in through an interface rather than a Deps field so
+	// that a runner which has nothing to say — a mock, a test double — needs
+	// to implement nothing.
+	if narrator, ok := deps.Agent.(interface {
+		AttachEvents(func(runID string, ev agent.Event))
+	}); ok {
+		narrator.AttachEvents(d.emitAgentEvent)
+	}
+
+	return d, nil
 }
 
 // DetectCapabilities is the default capability probe: which browsers this
