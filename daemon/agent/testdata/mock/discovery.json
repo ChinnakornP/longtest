@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "baseUrl": "http://localhost:3000",
+  "pages": [
+    {
+      "id": "page.root",
+      "path": "/",
+      "title": "Home",
+      "elements": [
+        {
+          "ref": "home.link.docs",
+          "type": "link",
+          "label": "Documentation",
+          "locators": [{ "kind": "text", "value": "Documentation" }],
+          "lastSeenRunId": "018f3a90-11a2-7000-8000-0123456789ab"
+        }
+      ]
+    }
+  ],
+  "workflows": []
+}

@@ -1,15 +1,23 @@
-// Package agent detects which AI coding CLIs this machine has, and is where
-// the AgentProvider abstraction (contract E) lands.
+// Package agent runs an AI coding CLI as a file exchange in a run workspace.
 //
-// The product does not hold LLM API keys: it drives whichever CLI the operator
-// already installed and authenticated (ADR-003). Detection is implemented here
-// because the daemon has to report it in every hello frame; launching a CLI
-// and running the file exchange is delivered by T10.
+// The product holds no LLM API key. It drives whichever CLI the operator
+// already installed and authenticated, and talks to it the only way that
+// survives a vendor changing its output format overnight (ADR-003): a prompt
+// file goes into the phase directory, the CLI is told to write out.json next
+// to it, and the daemon reads that file back. Nothing parses stdout — stdout
+// is a debugging log here, not a protocol.
 //
-// Two things a provider must not reimplement already exist. Prompts are
-// rendered by [github.com/ChinnakornP/longtest/daemon/agent/prompts], which is
-// the only path by which page-derived bytes may enter a prompt, and a CLI is
-// launched through a [github.com/ChinnakornP/longtest/daemon/security.Spec],
-// which is what confines it to the run's workspace. A provider that builds its
-// own prompt string or its own exec.Cmd has removed both.
+// The package is three things:
+//
+//	Detect      what this machine has, reported in every hello frame
+//	Provider    one CLI's launch recipe (claude, opencode, antigravity, mock)
+//	Runner      the phase loop: render, launch, validate, retry, record
+//
+// A provider owns only how its CLI is invoked. Everything that must not be
+// reimplemented per-CLI lives outside it: prompts are rendered by
+// [github.com/ChinnakornP/longtest/daemon/agent/prompts], the only path by
+// which page-derived bytes may enter a prompt, and every child is launched
+// through a [github.com/ChinnakornP/longtest/daemon/security.Spec], which is
+// what confines it to the workspace. A provider that builds its own prompt
+// string or its own exec.Cmd has removed both.
 package agent

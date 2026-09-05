@@ -46,6 +46,9 @@ func TestDetectReportsEveryKnownCLI(t *testing.T) {
 	caps := Detect(t.Context(), DetectOptions{
 		LookPath: lookup(map[string]string{"claude": claude}),
 		Timeout:  5 * time.Second,
+		// This test is about which binaries are present, so the credential
+		// question is answered for it. Readiness has its own tests.
+		Auth: stubAuth(ReadinessReady, ""),
 	})
 
 	if len(caps) != len(Known) {
@@ -167,4 +170,11 @@ func derefErr(c qaschema.AgentCapability) string {
 		return "<nil>"
 	}
 	return *c.Error
+}
+
+// stubAuth answers the credential question the same way for every CLI, so a
+// test about installation does not depend on what the developer happens to be
+// logged into.
+func stubAuth(r Readiness, detail string) AuthProbe {
+	return func(CLI, string, Host) (Readiness, string) { return r, detail }
 }
