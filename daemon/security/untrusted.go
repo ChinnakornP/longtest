@@ -44,6 +44,12 @@ const (
 	KindFilename      Kind = "filename"
 	KindPageTitle     Kind = "page_title"
 	KindURL           Kind = "url"
+	// KindAgentOutput is a model's own answer being shown back to it — a
+	// validator's report on a rejected out.json, most of the time. It belongs
+	// here because a model that was hijacked on its first attempt would
+	// otherwise get its injected instructions handed back as trusted
+	// feedback, which is the same hole through a longer path.
+	KindAgentOutput Kind = "agent_output"
 )
 
 // Block is one framed piece of untrusted content.

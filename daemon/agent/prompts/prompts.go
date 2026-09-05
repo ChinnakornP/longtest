@@ -53,6 +53,11 @@ type Input struct {
 	Nonce string
 	// OutputSchema names the contract the CLI must write, e.g. "test-plan@1".
 	OutputSchema string
+	// OutputSchemaFile is where that contract has been placed in the
+	// workspace, so the model can read the field names rather than guess
+	// them. Empty omits the reference — a caller that names no file is
+	// asserting the model already knows the shape, which no model does.
+	OutputSchemaFile string
 	// AllowedOrigins is the egress allowlist, restated to the model. It is
 	// not the enforcement point — security.PlanGate is — but a model that is
 	// told the rule breaks it less often, which saves a retry.
@@ -63,6 +68,13 @@ type Input struct {
 	// Input.Nonce so a caller cannot accidentally frame one under an id the
 	// task text does not mention.
 	Untrusted []security.Block
+
+	// Retry, when set, tells the model this is a second or third attempt and
+	// that the validator's report on its previous answer is among the blocks
+	// below. The report itself is never inlined: it quotes the document the
+	// model wrote, which on a hijacked first attempt is page content wearing
+	// the model's voice.
+	Retry *Retry
 
 	// Scrubber removes the run's credentials from the finished prompt.
 	//
@@ -83,6 +95,17 @@ func System() string {
 		panic(fmt.Sprintf("prompts: read system template: %v", err))
 	}
 	return string(b)
+}
+
+// Retry is the feedback a rejected attempt gets. It carries counts and file
+// names only — every byte the previous attempt produced travels as an
+// [Input.Untrusted] block, framed like any other content this system did not
+// author.
+type Retry struct {
+	// Attempt is the number of the attempt about to be made, counting from 1.
+	Attempt int
+	// OutputFile is the document to rewrite, e.g. "out.json".
+	OutputFile string
 }
 
 // ErrNoNonce is returned when an Input has no frame id.
@@ -115,16 +138,29 @@ func Build(in Input) (string, error) {
 
 	var head bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&head, name, struct {
-		Nonce          string
-		OutputSchema   string
-		AllowedOrigins []string
-		FixtureNames   []string
-	}{in.Nonce, in.OutputSchema, origins, fixtures}); err != nil {
+		Nonce            string
+		OutputSchema     string
+		OutputSchemaFile string
+		AllowedOrigins   []string
+		FixtureNames     []string
+	}{in.Nonce, in.OutputSchema, in.OutputSchemaFile, origins, fixtures}); err != nil {
 		return "", fmt.Errorf("prompts: render %s: %w", name, err)
 	}
 
 	var sb strings.Builder
 	sb.WriteString(head.String())
+	if in.Retry != nil {
+		var retry bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&retry, "retry.md", struct {
+			Attempt      int
+			OutputFile   string
+			OutputSchema string
+		}{in.Retry.Attempt, in.Retry.OutputFile, in.OutputSchema}); err != nil {
+			return "", fmt.Errorf("prompts: render retry.md: %w", err)
+		}
+		sb.WriteString("\n")
+		sb.WriteString(retry.String())
+	}
 	if len(in.Untrusted) == 0 {
 		sb.WriteString("\n(no page content was captured for this task)\n")
 	}

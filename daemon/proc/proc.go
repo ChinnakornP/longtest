@@ -120,6 +120,34 @@ func Start(opts Options) (*Cmd, error) {
 	return c, nil
 }
 
+// Adopt starts a command somebody else built and gives it this package's
+// process-group handling.
+//
+// It exists for the sandbox: security.Spec.Command returns an *exec.Cmd whose
+// SysProcAttr already carries the clone flags and the parent-death signal that
+// have to be requested at fork time, and rebuilding it from Options would drop
+// them. Everything else — the new process group, Terminate killing the whole
+// tree — is identical to Start.
+//
+// The caller owns cmd.Stdin, cmd.Stdout and cmd.Stderr; Options.Pipe has no
+// equivalent here.
+func Adopt(cmd *exec.Cmd) (*Cmd, error) {
+	if cmd == nil {
+		return nil, errors.New("proc: no command")
+	}
+	setGroup(cmd)
+
+	c := &Cmd{cmd: cmd, done: make(chan struct{})}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("proc: start %s: %w", cmd.Path, err)
+	}
+	go func() {
+		c.waitErr = cmd.Wait()
+		close(c.done)
+	}()
+	return c, nil
+}
+
 // Stdin is the write end of the child's stdin, or nil when Options.Pipe was
 // not set.
 func (c *Cmd) Stdin() io.WriteCloser {

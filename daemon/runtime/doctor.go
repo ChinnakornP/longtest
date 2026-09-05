@@ -222,43 +222,67 @@ func doctorExecutor(ctx context.Context, cfg Config) Check {
 }
 
 func doctorAgents(ctx context.Context) []Check {
-	caps := agent.Detect(ctx, agent.DetectOptions{})
+	caps := agent.DetectAll(ctx, agent.DetectOptions{})
 
 	checks := make([]Check, 0, len(caps)+1)
-	usable := 0
+	usable, installed := 0, 0
 	for _, capability := range caps {
 		check := Check{Name: "agent:" + string(capability.Name)}
-		switch {
-		case capability.Ok:
+		switch capability.Readiness {
+		case agent.ReadinessReady:
 			usable++
+			installed++
 			check.Status = CheckOK
-			if capability.Version != nil {
-				check.Detail = *capability.Version
-			} else {
+			check.Detail = capability.Version
+			if check.Detail == "" {
 				check.Detail = "installed"
+			}
+		case agent.ReadinessUnauthenticated:
+			// The most common reason a fresh runtime cannot do AI work, and
+			// the one an operator is most likely to misdiagnose: they see
+			// "not available" and reinstall a CLI that was never missing.
+			installed++
+			check.Status = CheckWarn
+			check.Detail = capability.Detail
+			if cli, ok := agent.KnownCLI(capability.Name); ok {
+				check.Hint = cli.Login
 			}
 		default:
 			// One missing CLI is a warning: a runtime with any usable agent
 			// can still take AI work, and a runtime with none can still run
 			// approved regression suites.
 			check.Status = CheckWarn
-			if capability.Error != nil {
-				check.Detail = *capability.Error
+			check.Detail = capability.Detail
+			if cli, ok := agent.KnownCLI(capability.Name); ok {
+				check.Hint = cli.Install
 			}
 		}
 		checks = append(checks, check)
 	}
 
 	summary := Check{Name: "agents"}
-	if usable == 0 {
+	switch {
+	case usable > 0:
+		summary.Status = CheckOK
+		summary.Detail = fmt.Sprintf("%d of %d AI CLIs usable", usable, len(caps))
+	case installed > 0:
+		summary.Status = CheckWarn
+		summary.Detail = "every AI CLI on this machine is installed but not logged in: discovery, planning and analysis will fail, execution of approved test cases will not"
+		summary.Hint = "log in to one of: " + agentLoginHints()
+	default:
 		summary.Status = CheckWarn
 		summary.Detail = "no AI CLI is usable on this machine: discovery, planning and analysis will fail, execution of approved test cases will not"
 		summary.Hint = "install one of: " + agentInstallHints()
-	} else {
-		summary.Status = CheckOK
-		summary.Detail = fmt.Sprintf("%d of %d AI CLIs usable", usable, len(caps))
 	}
 	return append(checks, summary)
+}
+
+func agentLoginHints() string {
+	hints := make([]string, 0, len(agent.Known))
+	for _, cli := range agent.Known {
+		hints = append(hints, fmt.Sprintf("%s (%s)", cli.Binary, cli.Login))
+	}
+	return strings.Join(hints, ", ")
 }
 
 func agentInstallHints() string {

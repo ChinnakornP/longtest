@@ -5,7 +5,13 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/ChinnakornP/longtest/daemon/agent"
+	"github.com/ChinnakornP/longtest/daemon/agent/antigravity"
+	"github.com/ChinnakornP/longtest/daemon/agent/claude"
+	"github.com/ChinnakornP/longtest/daemon/agent/opencode"
+	"github.com/ChinnakornP/longtest/daemon/pkg/qaschema"
 	"github.com/ChinnakornP/longtest/daemon/runtime"
+	"github.com/ChinnakornP/longtest/daemon/security"
 	"github.com/ChinnakornP/longtest/daemon/workspace"
 )
 
@@ -71,13 +77,16 @@ func runStart(ctx context.Context, args []string, stderr io.Writer) error {
 		return err
 	}
 
+	agentRunner, err := newAgentRunner(cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	daemon, err := runtime.New(cfg, runtime.Deps{
 		Logger:     logger,
 		Workspaces: workspaces,
 		State:      state,
-		// Agent is left nil until a provider is wired in (T10): a run that
-		// needs an AI CLI then fails with agent_not_available, which is the
-		// honest answer rather than a phase that silently does nothing.
+		Agent:      agentRunner,
 	})
 	if err != nil {
 		return err
@@ -90,4 +99,46 @@ func runStart(ctx context.Context, args []string, stderr io.Writer) error {
 	// Run blocks until the context is cancelled and every in-flight run has
 	// been torn down, so returning from here means nothing is left running.
 	return daemon.Run(ctx)
+}
+
+// newAgentRunner builds the AI CLI layer this daemon offers.
+//
+// Every provider is registered whether or not its CLI is installed: detection
+// is what decides usability, and a runtime that omitted the ones it lacks
+// would report a shorter list of options each time an operator uninstalled
+// something, with no way for the UI to say why.
+func newAgentRunner(cfg runtime.Config, logger *slog.Logger) (runtime.AgentRunner, error) {
+	registry := agent.NewRegistry(
+		claude.New(claude.Options{Model: cfg.Agent.Model}),
+		opencode.New(opencode.Options{}),
+		antigravity.New(antigravity.Options{}),
+	)
+
+	runner, err := agent.NewRunner(agent.RunnerOptions{
+		Registry:    registry,
+		Default:     qaschema.AgentCapabilityName(cfg.Agent.Default),
+		MaxAttempts: cfg.Agent.MaxAttempts,
+		Timeout:     cfg.Agent.Timeout(),
+		Logger:      logger,
+		// The pairing token is this runtime's bearer credential for the
+		// control plane. It is registered so that an application under test
+		// which somehow echoes it back cannot get it copied into an AI CLI's
+		// context window on top of wherever it already leaked.
+		Secrets: []string{cfg.Token},
+		Sandbox: security.Spec{
+			Limits: security.DefaultAgentLimits(),
+			// The CLI has to reach its own vendor's API, and there is no list
+			// of addresses to allow that would survive a CDN. The confinement
+			// that matters for an AI CLI is the filesystem one: it can read
+			// and write the run workspace and its own credentials, and
+			// nothing else on the machine.
+			Network:          security.NetworkHost,
+			EnvAllow:         security.BaseEnvAllow(),
+			AllowUnsandboxed: cfg.Agent.AllowUnsandboxed,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return runtime.NewAgentRunner(runner), nil
 }
