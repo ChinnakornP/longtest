@@ -121,7 +121,7 @@ func (s *Service) Create(ctx context.Context, scope auth.OrgScope, in CreateInpu
 	}
 
 	if in.IdempotencyKey != "" {
-		existing, found, err := s.byIdempotencyKey(ctx, scope.OrgID, in.IdempotencyKey)
+		existing, found, err := s.byIdempotencyKey(ctx, scope.OrgID(), in.IdempotencyKey)
 		if err != nil {
 			return Created{}, err
 		}
@@ -132,7 +132,7 @@ func (s *Service) Create(ctx context.Context, scope auth.OrgScope, in CreateInpu
 
 	var created dbgen.Run
 	err = s.store.WithTx(ctx, func(q *dbgen.Queries) error {
-		project, err := q.GetProject(ctx, dbgen.GetProjectParams{OrgID: scope.OrgID, ID: in.ProjectID})
+		project, err := q.GetProject(ctx, dbgen.GetProjectParams{OrgID: scope.OrgID(), ID: in.ProjectID})
 		if err != nil {
 			if errors.Is(db.Classify(err), db.ErrNotFound) {
 				return httpx.NotFound("project not found")
@@ -143,31 +143,31 @@ func (s *Service) Create(ctx context.Context, scope auth.OrgScope, in CreateInpu
 			return httpx.Conflict("that project is archived")
 		}
 
-		runtimeID, err := s.resolveRuntime(ctx, q, scope.OrgID, in.RuntimeID)
+		runtimeID, err := s.resolveRuntime(ctx, q, scope.OrgID(), in.RuntimeID)
 		if err != nil {
 			return err
 		}
 
 		created, err = q.CreateRun(ctx, dbgen.CreateRunParams{
-			OrgID:          scope.OrgID,
+			OrgID:          scope.OrgID(),
 			ProjectID:      in.ProjectID,
 			RuntimeID:      runtimeID,
 			Mode:           mode,
 			IdempotencyKey: textOrNull(in.IdempotencyKey),
-			CreatedBy:      uuid.NullUUID{UUID: scope.UserID, Valid: true},
+			CreatedBy:      uuid.NullUUID{UUID: scope.UserID(), Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("create run: %w", db.Classify(err))
 		}
 
-		return s.seedExecutions(ctx, q, scope.OrgID, created, in)
+		return s.seedExecutions(ctx, q, scope.OrgID(), created, in)
 	})
 	if err != nil {
 		// A concurrent POST with the same Idempotency-Key won the unique
 		// index. That is the retry this key exists for, so return its run
 		// rather than a conflict the client cannot act on.
 		if in.IdempotencyKey != "" && errors.Is(err, db.ErrConflict) {
-			existing, found, lookupErr := s.byIdempotencyKey(ctx, scope.OrgID, in.IdempotencyKey)
+			existing, found, lookupErr := s.byIdempotencyKey(ctx, scope.OrgID(), in.IdempotencyKey)
 			if lookupErr == nil && found {
 				return Created{Run: existing, Existing: true}, nil
 			}
@@ -278,7 +278,7 @@ func (s *Service) byIdempotencyKey(ctx context.Context, orgID uuid.UUID, key str
 
 // Get returns one run. A run in another organization is a 404, not a 403.
 func (s *Service) Get(ctx context.Context, scope auth.OrgScope, runID uuid.UUID) (dbgen.Run, error) {
-	found, err := s.store.GetRun(ctx, dbgen.GetRunParams{OrgID: scope.OrgID, ID: runID})
+	found, err := s.store.GetRun(ctx, dbgen.GetRunParams{OrgID: scope.OrgID(), ID: runID})
 	if err != nil {
 		if errors.Is(db.Classify(err), db.ErrNotFound) {
 			return dbgen.Run{}, httpx.NotFound("run not found")
@@ -303,12 +303,12 @@ func (s *Service) List(ctx context.Context, scope auth.OrgScope, projectID *uuid
 	}
 
 	runs, err := s.store.ListRuns(ctx, dbgen.ListRunsParams{
-		OrgID: scope.OrgID, ProjectID: filter, Limit: page.Limit, Offset: page.Offset,
+		OrgID: scope.OrgID(), ProjectID: filter, Limit: page.Limit, Offset: page.Offset,
 	})
 	if err != nil {
 		return Listed{}, fmt.Errorf("list runs: %w", db.Classify(err))
 	}
-	total, err := s.store.CountRuns(ctx, dbgen.CountRunsParams{OrgID: scope.OrgID, ProjectID: filter})
+	total, err := s.store.CountRuns(ctx, dbgen.CountRunsParams{OrgID: scope.OrgID(), ProjectID: filter})
 	if err != nil {
 		return Listed{}, fmt.Errorf("count runs: %w", db.Classify(err))
 	}
@@ -328,7 +328,7 @@ func (s *Service) Cancel(ctx context.Context, scope auth.OrgScope, runID uuid.UU
 	err := s.store.WithTx(ctx, func(q *dbgen.Queries) error {
 		// FOR UPDATE, not a bare read: two cancels arriving together must not
 		// both decide the run is live and both send a run.cancel frame.
-		current, err := q.GetRunForUpdate(ctx, dbgen.GetRunForUpdateParams{OrgID: scope.OrgID, ID: runID})
+		current, err := q.GetRunForUpdate(ctx, dbgen.GetRunForUpdateParams{OrgID: scope.OrgID(), ID: runID})
 		if err != nil {
 			if errors.Is(db.Classify(err), db.ErrNotFound) {
 				return httpx.NotFound("run not found")
@@ -344,7 +344,7 @@ func (s *Service) Cancel(ctx context.Context, scope auth.OrgScope, runID uuid.UU
 			return httpx.Conflict("that run already finished as %s", current.Status)
 		}
 
-		cancelled, err = q.CancelRun(ctx, dbgen.CancelRunParams{OrgID: scope.OrgID, ID: runID})
+		cancelled, err = q.CancelRun(ctx, dbgen.CancelRunParams{OrgID: scope.OrgID(), ID: runID})
 		if err != nil {
 			return fmt.Errorf("cancel run: %w", db.Classify(err))
 		}
@@ -392,7 +392,7 @@ func (s *Service) Events(ctx context.Context, scope auth.OrgScope, runID uuid.UU
 	}
 
 	events, err := s.store.ListRunEventsSince(ctx, dbgen.ListRunEventsSinceParams{
-		OrgID: scope.OrgID, RunID: runID, Seq: since, Limit: limit,
+		OrgID: scope.OrgID(), RunID: runID, Seq: since, Limit: limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list run events: %w", db.Classify(err))
@@ -401,14 +401,18 @@ func (s *Service) Events(ctx context.Context, scope auth.OrgScope, runID uuid.UU
 }
 
 // OpenRunStream implements realtime.StreamSource.
-func (s *Service) OpenRunStream(ctx context.Context, orgID, runID uuid.UUID, since int64) (realtime.RunStream, error) {
-	scope := auth.OrgScope{OrgID: orgID}
+//
+// It takes the scope rather than a bare org id so that the tenancy decision
+// the browser handler's middleware already made travels all the way down: a
+// uuid parameter here would be a second place a subscription's org could come
+// from, and there is deliberately only one.
+func (s *Service) OpenRunStream(ctx context.Context, scope auth.OrgScope, runID uuid.UUID, since int64) (realtime.RunStream, error) {
 	current, err := s.Get(ctx, scope, runID)
 	if err != nil {
 		return realtime.RunStream{}, err
 	}
 
-	lastSeq, err := s.store.GetLastRunEventSeq(ctx, dbgen.GetLastRunEventSeqParams{OrgID: orgID, RunID: runID})
+	lastSeq, err := s.store.GetLastRunEventSeq(ctx, dbgen.GetLastRunEventSeqParams{OrgID: scope.OrgID(), RunID: runID})
 	if err != nil {
 		return realtime.RunStream{}, fmt.Errorf("read last event seq: %w", db.Classify(err))
 	}

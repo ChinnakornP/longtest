@@ -55,7 +55,7 @@ type View struct {
 // List returns every runtime in the caller's organization, ordered by name.
 func (s *Service) List(ctx context.Context, scope auth.OrgScope) ([]View, error) {
 	rows, err := s.store.ListRuntimes(ctx, dbgen.ListRuntimesParams{
-		OrgID:        scope.OrgID,
+		OrgID:        scope.OrgID(),
 		OnlineWithin: pgtype.Interval{Microseconds: s.onlineWithin.Microseconds(), Valid: true},
 	})
 	if err != nil {
