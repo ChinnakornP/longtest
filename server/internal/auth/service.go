@@ -234,7 +234,7 @@ type MeResult struct {
 // Me returns the caller and every organization they belong to, with the role
 // in each. It is what the web app calls on boot to populate the org switcher.
 func (s *Service) Me(ctx context.Context, caller Caller) (MeResult, error) {
-	user, err := s.store.GetUser(ctx, caller.UserID)
+	user, err := s.store.GetUser(ctx, caller.userID)
 	if err != nil {
 		if errors.Is(db.Classify(err), db.ErrNotFound) {
 			// The account was deleted while the session was live.
@@ -243,7 +243,7 @@ func (s *Service) Me(ctx context.Context, caller Caller) (MeResult, error) {
 		return MeResult{}, fmt.Errorf("look up user: %w", db.Classify(err))
 	}
 
-	orgs, err := s.membershipsFor(ctx, caller.UserID)
+	orgs, err := s.membershipsFor(ctx, caller.userID)
 	if err != nil {
 		return MeResult{}, err
 	}

@@ -1,6 +1,7 @@
 # ADR-007: An org id in a path is an assertion, never a source
 
-- **Status:** Accepted — 2026-09-04
+- **Status:** Accepted — 2026-09-04; amended 2026-09-05 (LONG-24), see
+  [Amendment](#amendment-2026-09-05--the-guarantee-is-now-in-the-type-system)
 - **Affected:** `server/internal/auth` (middleware), `server/internal/org`,
   every org-scoped route added by LONG-10, `apps/web` (LONG-9), LONG-13
 - **Related:** [ADR-006](0006-multi-tenant-from-day-one.md) — refines it, does
@@ -48,9 +49,10 @@ Concretely:
   exactly as ADR-006 specifies. It runs first.
 - `auth.RequireOrgMatchesPath("orgID")` then compares the path segment with the
   already-resolved scope and answers **403** if they differ.
-- Handlers obtain the org id only from `auth.MustOrgScope(ctx)`. There is no
-  exported constructor for an `auth.OrgScope`, so a handler cannot build one
-  from a path, a body or a query string even by accident.
+- Handlers obtain the org id only from `auth.MustOrgScope(ctx)`. An
+  `auth.OrgScope` has no exported field and no exported constructor, so a
+  handler cannot build one from a path, a body or a query string even by
+  accident: the struct literal that would do it does not compile.
 
 The header is still what the middleware trusts; the path can only ever narrow
 the set of requests that are served, never widen it.
@@ -82,3 +84,63 @@ the set of requests that are served, never widen it.
   loses the stale-tab guard, so the pairing is part of the route template
   LONG-10 copies.
 - ADR-006 stands unchanged: no handler reads an org id from a request.
+
+## Amendment 2026-09-05 — the guarantee is now in the type system
+
+As first accepted, this ADR claimed there was "no exported constructor for an
+`auth.OrgScope`". That was true of *functions* and false of the *type*: every
+field of `OrgScope` was exported, so `auth.OrgScope{OrgID: idFromPath}`
+compiled from any package. Nobody had written that line, but the guarantee was
+a convention, and the route template stage 5–6 copies would have carried the
+convention into every new handler.
+
+The fields are now unexported and read through accessors:
+
+```go
+type OrgScope struct {
+    caller Caller
+    orgID  uuid.UUID
+    role   Role
+}
+
+func (s OrgScope) OrgID() uuid.UUID { return s.orgID }
+func (s OrgScope) Role() Role       { return s.role }
+```
+
+`auth.Caller` and `auth.RuntimeCaller` are sealed the same way, for the same
+reason: forging a `Caller` names an arbitrary user, and forging a
+`RuntimeCaller` names an arbitrary daemon. `WithCaller`, `WithOrgScope` and
+`WithRuntimeCaller` are unexported too, so the middleware in `internal/auth` is
+the only thing that can put a principal into a request context.
+
+Outside `internal/auth` the only value of any of these types that can be
+written down is the zero value, which names nothing and is refused by
+`MustOrgScope` / `MustRuntimeCaller`. Three tests in
+`server/internal/auth/seal_test.go` keep it that way, and each has been checked
+to fail when the property is broken:
+
+- `TestAuthPrincipalsAreSealed` — every field of all three types is unexported.
+- `TestNoExportedConstructorForAPrincipal` — parses `internal/auth` and fails on
+  any new exported function returning a principal that is not a documented
+  context or credential lookup.
+- `TestNoPackageOutsideAuthWritesAPrincipalLiteral` — no package outside
+  `internal/auth` populates one of these literals.
+
+### The one org id `auth` does not resolve
+
+The run scheduler builds a `run.assign` frame for a run it has already claimed
+from the queue. There is no request behind it, so there is no caller whose
+membership `auth` could verify and no `OrgScope` to pass; the org id is the one
+on the claimed row. That path used to fake a scope (`auth.OrgScope{OrgID:
+claimed.OrgID}`) and now goes through `project.Service.SystemGet` /
+`SystemApplicationMap`, which take the org id as a plain argument and are named
+for the fact that no request chose it.
+
+`TestSystemProjectReadsHaveNoRequestCallers` in `internal/project` allowlists
+the single file allowed to call them (`internal/run/assign.go`) and fails on
+any other caller, so a handler cannot use the system path to get back the org
+id it is not allowed to read from a path.
+
+Nothing about the tenancy model, the middleware chain or the HTTP contract
+changed: the header is still the only source of the active organization, and a
+mismatched path segment is still a 403.

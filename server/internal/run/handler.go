@@ -264,7 +264,7 @@ func (s *Service) PresignArtifactUpload(ctx context.Context, rc auth.RuntimeCall
 		// its run is exactly what the window exists to prevent.
 		return artifact.SignedURL{}, httpx.Conflict("that run has already finished")
 	}
-	return s.artifacts.PutURL(rc.OrgID, runID, runDay(current), key)
+	return s.artifacts.PutURL(rc.OrgID(), runID, runDay(current), key)
 }
 
 func scopeAndRun(r *http.Request) (auth.OrgScope, uuid.UUID, error) {

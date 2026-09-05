@@ -86,7 +86,7 @@ func (s *Service) Create(ctx context.Context, caller auth.Caller, name string) (
 	// owner cannot be administered by anyone, ever.
 	err = s.store.WithTx(ctx, func(q *dbgen.Queries) error {
 		var txErr error
-		org, txErr = s.CreateForOwner(ctx, q, caller.UserID, trimmed)
+		org, txErr = s.CreateForOwner(ctx, q, caller.UserID(), trimmed)
 		return txErr
 	})
 	if err != nil {
@@ -109,7 +109,7 @@ type Member struct {
 // The scope comes from the middleware, so the org id can only be one the
 // caller is a member of - there is no argument here to pass the wrong org in.
 func (s *Service) ListMembers(ctx context.Context, scope auth.OrgScope) ([]Member, error) {
-	rows, err := s.store.ListMembers(ctx, scope.OrgID)
+	rows, err := s.store.ListMembers(ctx, scope.OrgID())
 	if err != nil {
 		return nil, fmt.Errorf("list members: %w", db.Classify(err))
 	}
@@ -146,10 +146,10 @@ func (s *Service) CreateInvite(
 	}
 	// Privilege escalation guard: an admin cannot mint an owner, and nobody
 	// can invite somebody to a role above their own.
-	if !scope.Role.AtLeast(role) {
-		return dbgen.Invite{}, "", httpx.Forbidden("you cannot invite somebody as %s; your own role is %s", role, scope.Role)
+	if !scope.Role().AtLeast(role) {
+		return dbgen.Invite{}, "", httpx.Forbidden("you cannot invite somebody as %s; your own role is %s", role, scope.Role())
 	}
-	if err := s.rejectExistingMember(ctx, scope.OrgID, normalisedEmail); err != nil {
+	if err := s.rejectExistingMember(ctx, scope.OrgID(), normalisedEmail); err != nil {
 		return dbgen.Invite{}, "", err
 	}
 
@@ -165,18 +165,18 @@ func (s *Service) CreateInvite(
 	var invite dbgen.Invite
 	err = s.store.WithTx(ctx, func(q *dbgen.Queries) error {
 		if _, err := q.RevokeLiveInvitesForEmail(ctx, dbgen.RevokeLiveInvitesForEmailParams{
-			OrgID: scope.OrgID,
+			OrgID: scope.OrgID(),
 			Email: normalisedEmail,
 		}); err != nil {
 			return fmt.Errorf("revoke previous invites: %w", db.Classify(err))
 		}
 
 		created, err := q.CreateInvite(ctx, dbgen.CreateInviteParams{
-			OrgID:     scope.OrgID,
+			OrgID:     scope.OrgID(),
 			Email:     normalisedEmail,
 			Role:      role.DB(),
 			TokenHash: tokenHash,
-			InvitedBy: uuid.NullUUID{UUID: scope.UserID, Valid: true},
+			InvitedBy: uuid.NullUUID{UUID: scope.UserID(), Valid: true},
 			ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(InviteTTL), Valid: true},
 		})
 		if err != nil {
@@ -217,7 +217,7 @@ func (s *Service) rejectExistingMember(ctx context.Context, orgID uuid.UUID, ema
 // ListInvites returns the organization's outstanding invites. Token hashes are
 // never projected out of this function.
 func (s *Service) ListInvites(ctx context.Context, scope auth.OrgScope) ([]dbgen.Invite, error) {
-	invites, err := s.store.ListInvites(ctx, scope.OrgID)
+	invites, err := s.store.ListInvites(ctx, scope.OrgID())
 	if err != nil {
 		return nil, fmt.Errorf("list invites: %w", db.Classify(err))
 	}
@@ -226,7 +226,7 @@ func (s *Service) ListInvites(ctx context.Context, scope auth.OrgScope) ([]dbgen
 
 // RevokeInvite withdraws an outstanding invite.
 func (s *Service) RevokeInvite(ctx context.Context, scope auth.OrgScope, inviteID uuid.UUID) error {
-	rows, err := s.store.RevokeInvite(ctx, dbgen.RevokeInviteParams{OrgID: scope.OrgID, ID: inviteID})
+	rows, err := s.store.RevokeInvite(ctx, dbgen.RevokeInviteParams{OrgID: scope.OrgID(), ID: inviteID})
 	if err != nil {
 		return fmt.Errorf("revoke invite: %w", db.Classify(err))
 	}
@@ -268,7 +268,7 @@ func (s *Service) AcceptInvite(ctx context.Context, caller auth.Caller, token st
 		}
 		return AcceptedInvite{}, fmt.Errorf("look up invite: %w", db.Classify(err))
 	}
-	if !strings.EqualFold(invite.Email, caller.Email) {
+	if !strings.EqualFold(invite.Email, caller.Email()) {
 		return AcceptedInvite{}, httpx.Forbidden("that invite was issued to a different e-mail address")
 	}
 
@@ -287,7 +287,7 @@ func (s *Service) AcceptInvite(ctx context.Context, caller auth.Caller, token st
 	err = s.store.WithTx(ctx, func(q *dbgen.Queries) error {
 		claimed, err := q.AcceptInvite(ctx, dbgen.AcceptInviteParams{
 			TokenHash:  tokenHash,
-			AcceptedBy: uuid.NullUUID{UUID: caller.UserID, Valid: true},
+			AcceptedBy: uuid.NullUUID{UUID: caller.UserID(), Valid: true},
 		})
 		if err != nil {
 			if errors.Is(db.Classify(err), db.ErrNotFound) {
@@ -300,7 +300,7 @@ func (s *Service) AcceptInvite(ctx context.Context, caller auth.Caller, token st
 
 		if existing, err := q.GetMembership(ctx, dbgen.GetMembershipParams{
 			OrgID:  claimed.OrgID,
-			UserID: caller.UserID,
+			UserID: caller.UserID(),
 		}); err == nil {
 			if current := auth.RoleFromDB(existing.Role); current.AtLeast(grantedRole) {
 				grantedRole = current
@@ -311,7 +311,7 @@ func (s *Service) AcceptInvite(ctx context.Context, caller auth.Caller, token st
 
 		if _, err := q.UpsertMembership(ctx, dbgen.UpsertMembershipParams{
 			OrgID:  claimed.OrgID,
-			UserID: caller.UserID,
+			UserID: caller.UserID(),
 			Role:   grantedRole.DB(),
 		}); err != nil {
 			return fmt.Errorf("grant membership: %w", db.Classify(err))
@@ -346,9 +346,9 @@ func (s *Service) CreatePairingCode(ctx context.Context, scope auth.OrgScope) (P
 	expiresAt := time.Now().Add(PairingCodeTTL)
 
 	if _, err := s.store.CreatePairingCode(ctx, dbgen.CreatePairingCodeParams{
-		OrgID:     scope.OrgID,
+		OrgID:     scope.OrgID(),
 		CodeHash:  hash,
-		CreatedBy: uuid.NullUUID{UUID: scope.UserID, Valid: true},
+		CreatedBy: uuid.NullUUID{UUID: scope.UserID(), Valid: true},
 		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
 	}); err != nil {
 		return PairingCode{}, fmt.Errorf("create pairing code: %w", db.Classify(err))
