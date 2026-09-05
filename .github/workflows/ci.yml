@@ -19,6 +19,10 @@ env:
   # moved by whoever owns the action.
   GOLANGCI_LINT_VERSION: v2.13.2
   GITLEAKS_VERSION: v8.30.0
+  # The Makefile declares this one with `?=`, so this value wins here and a
+  # laptop falls back to the Makefile default. It is repeated in this file
+  # only because the `lint` cache key has to change when the pin does.
+  ACTIONLINT_VERSION: v1.7.12
   NODE_VERSION: '24'
 
 jobs:
@@ -43,8 +47,26 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: go-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ hashFiles('**/go.mod', '**/go.sum') }}
-          restore-keys: go-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-
+          # Both pinned tool versions are part of the key: actions/cache does not
+          # re-save on an exact key hit, so a version left out of the key means
+          # its binary never reaches ~/go/bin and gets rebuilt on every run.
+          key: go-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ env.ACTIONLINT_VERSION }}-${{ hashFiles('**/go.mod', '**/go.sum') }}
+          # The second, broader prefix is what the key looked like before
+          # actionlint joined it. Without it the first run after this change
+          # matches no existing cache and rebuilds golangci-lint from an empty
+          # build cache too - a one-off minute for no reason. A hit on it can
+          # carry an actionlint of the wrong version; `make lint-ci` checks
+          # -version and reinstalls, so that is safe.
+          restore-keys: |
+            go-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ env.ACTIONLINT_VERSION }}-
+            go-lint-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-
+
+      # First real check in the pipeline, and deliberately so: a workflow file
+      # that GitHub cannot parse produces a 0s run with no check runs at all,
+      # which a PR shows as "no checks reported" rather than as red. This is
+      # the only gate that can catch that, and it costs a few seconds.
+      - name: Lint GitHub Actions workflows
+        run: make lint-ci
 
       - name: Install golangci-lint
         # Built from source at a pinned version so the checksum database
