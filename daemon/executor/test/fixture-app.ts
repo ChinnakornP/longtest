@@ -11,6 +11,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ApplicationMap, TestCase } from '@qa/schema';
 
 export const REPO_ROOT = join(__dirname, '..', '..', '..');
 export const FX_ENTRY = join(REPO_ROOT, 'e2e', 'fixture-app', 'src', 'server.ts');
@@ -26,30 +27,62 @@ export const TSX_BIN = join(REPO_ROOT, 'daemon', 'executor', 'node_modules', '.b
 export const FIXTURE_USER = 'admin@example.test';
 export const FIXTURE_PASSWORD = 'letmein';
 
+/** True when the fixture app can be started at all: tsx is on disk. */
+export function fixtureAvailable(): boolean {
+  return existsSync(TSX_BIN);
+}
+
 /** True when the playwright chromium binary is on disk. */
 export function chromiumAvailable(): boolean {
   // Playwright reports its cache via the env var or ~/.cache/ms-playwright
   // — we check the latter because that is what `playwright install` writes.
   const cache = join(process.env['HOME'] ?? tmpdir(), '.cache', 'ms-playwright');
-  return existsSync(cache) && existsSync(TSX_BIN);
+  return existsSync(cache) && fixtureAvailable();
+}
+
+export interface FixtureOptions {
+  /**
+   * Defects to inject, as FIXTURE_BUGS names. Empty is the honest app.
+   *
+   * A test that asks for one is asserting on a failure whose true cause it
+   * already knows, which is the only way a failure classifier can be scored.
+   */
+  bugs?: readonly string[];
+  /**
+   * Set false for a test that drives the app over HTTP rather than through a
+   * browser. Those need tsx and nothing else, and skipping them wherever
+   * chromium is absent hides them on every machine that has not run
+   * `playwright install`.
+   */
+  requiresBrowser?: boolean;
 }
 
 export class FixtureApp {
   private proc: ChildProcessWithoutNullStreams | undefined;
   private port = 0;
+  private readonly options: FixtureOptions;
   readonly baseUrl: string;
 
-  constructor() {
+  constructor(options: FixtureOptions = {}) {
+    this.options = options;
     this.baseUrl = '';
   }
 
   async start(): Promise<void> {
-    if (!chromiumAvailable()) {
+    if (this.options.requiresBrowser !== false && !chromiumAvailable()) {
       throw new Error('chromium-not-installed');
+    }
+    if (!fixtureAvailable()) {
+      throw new Error('tsx-not-installed');
     }
     const proc = spawn(TSX_BIN, [FX_ENTRY], {
       cwd: join(REPO_ROOT, 'e2e', 'fixture-app'),
-      env: { ...process.env, FIXTURE_USER, FIXTURE_PASSWORD },
+      env: {
+        ...process.env,
+        FIXTURE_USER,
+        FIXTURE_PASSWORD,
+        FIXTURE_BUGS: (this.options.bugs ?? []).join(','),
+      },
     });
     this.proc = proc;
     const port = await new Promise<number>((resolve, reject) => {
@@ -94,3 +127,74 @@ export class FixtureApp {
     return this.port;
   }
 }
+
+/**
+ * The application map of the fixture app, as a discovery run would produce it.
+ *
+ * Shared rather than copied per suite for the reason this file exists: three
+ * suites now drive the same application, and the first symptom of a copy
+ * drifting is two of them disagreeing about what "the fixture app" is.
+ */
+export const employeesAppMap: ApplicationMap = {
+  version: 1,
+  baseUrl: 'http://127.0.0.1:0', // overwritten per run
+  pages: [
+    {
+      id: 'page.login',
+      path: '/login',
+      title: 'Sign in',
+      elements: [
+        { ref: 'login.input.email', type: 'input', label: 'Email', locators: [{ kind: 'testId', value: 'login-email' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+        { ref: 'login.input.password', type: 'input', label: 'Password', locators: [{ kind: 'testId', value: 'login-password' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+        { ref: 'login.btn.submit', type: 'button', label: 'Sign in', locators: [{ kind: 'testId', value: 'login-submit' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+      ],
+    },
+    {
+      id: 'page.employees',
+      path: '/employees',
+      title: 'Employees',
+      elements: [
+        { ref: 'emp.btn.add', type: 'button', label: 'Add Employee', locators: [{ kind: 'testId', value: 'add-emp' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+        { ref: 'emp.input.first', type: 'input', label: 'First name', locators: [{ kind: 'testId', value: 'employee-first-name' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+        { ref: 'emp.input.last', type: 'input', label: 'Last name', locators: [{ kind: 'testId', value: 'employee-last-name' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+        { ref: 'emp.input.email', type: 'input', label: 'Email', locators: [{ kind: 'testId', value: 'employee-email' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+        { ref: 'emp.btn.save', type: 'button', label: 'Save', locators: [{ kind: 'testId', value: 'employee-save' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+        { ref: 'emp.table', type: 'table', label: 'Employees', locators: [{ kind: 'testId', value: 'employee-table' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+        { ref: 'emp.detail.email', type: 'text', label: 'Employee email', locators: [{ kind: 'testId', value: 'employee-email' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+        { ref: 'emp.search', type: 'input', label: 'Search', locators: [{ kind: 'testId', value: 'employee-search' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
+      ],
+    },
+  ],
+  workflows: [],
+};
+
+/**
+ * Sign in, create an employee, and check it is listed.
+ *
+ * Passes against the honest app and fails against `create-500`, which is what
+ * makes it usable as both a determinism case and an analysis fixture.
+ */
+export const loginAndCreateEmployee = (uniqueSuffix: string): TestCase => ({
+  version: 1,
+  id: 'TC-INT-001',
+  name: 'login and create employee',
+  priority: 'critical',
+  category: 'functional',
+  preconditions: ['fixture:logged_in_as_admin'],
+  steps: [
+    { action: 'navigate', url: '/employees' },
+    { action: 'click', target: { ref: 'emp.btn.add' } },
+    { action: 'fill', target: { ref: 'emp.input.first' }, value: `John-${uniqueSuffix}` },
+    { action: 'fill', target: { ref: 'emp.input.last' }, value: 'Doe' },
+    { action: 'fill', target: { ref: 'emp.input.email' }, value: `john-${uniqueSuffix}@example.test` },
+    { action: 'click', target: { ref: 'emp.btn.save' } },
+    { action: 'waitFor', target: { ref: 'emp.detail.email' }, state: 'visible', timeoutMs: 10_000 },
+    { action: 'navigate', url: '/employees' },
+    { action: 'waitFor', target: { ref: 'emp.table' }, state: 'visible', timeoutMs: 10_000 },
+  ],
+  assertions: [
+    { type: 'visible', target: { ref: 'emp.table' } },
+    { type: 'urlMatches', value: '^/employees' },
+    { type: 'noConsoleError', ignorePatterns: ['favicon'] },
+  ],
+});
