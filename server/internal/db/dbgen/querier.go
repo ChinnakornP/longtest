@@ -64,6 +64,11 @@ type Querier interface {
 	CountProjects(ctx context.Context, arg CountProjectsParams) (int64, error)
 	CountRunEvents(ctx context.Context, arg CountRunEventsParams) (int64, error)
 	CountRuns(ctx context.Context, arg CountRunsParams) (int64, error)
+	// The total behind a bounded version page. Counted rather than derived from
+	// test_cases.current_version: the two agree today only because nothing deletes
+	// a version row, and a report that quietly overstates its own history is worse
+	// than one extra indexed count.
+	CountTestCaseVersions(ctx context.Context, arg CountTestCaseVersionsParams) (int64, error)
 	CountTestCases(ctx context.Context, arg CountTestCasesParams) (int64, error)
 	CreateExecution(ctx context.Context, arg CreateExecutionParams) (Execution, error)
 	// Seeds a run's whole work list in one statement from the cases it selected,
@@ -175,6 +180,12 @@ type Querier interface {
 	GetRuntime(ctx context.Context, arg GetRuntimeParams) (Runtime, error)
 	GetTestCase(ctx context.Context, arg GetTestCaseParams) (TestCase, error)
 	GetTestCaseByRef(ctx context.Context, arg GetTestCaseByRefParams) (TestCase, error)
+	// Read-modify-write on one case goes through this, never through GetTestCase.
+	// A payload edit reads the row's review status and its current_version, judges
+	// the caller's baseVersion against them, and only then writes; two reviewers
+	// saving together must not both read version 3 and both conclude that their
+	// edit is the one that applies.
+	GetTestCaseForUpdate(ctx context.Context, arg GetTestCaseForUpdateParams) (TestCase, error)
 	GetTestCaseVersion(ctx context.Context, arg GetTestCaseVersionParams) (TestCaseVersion, error)
 	GetUser(ctx context.Context, id uuid.UUID) (User, error)
 	// The login lookup. citext makes this case-insensitive without a lower() cast
