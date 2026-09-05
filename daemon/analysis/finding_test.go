@@ -244,3 +244,61 @@ func TestEveryRuleVerdictEncodes(t *testing.T) {
 		t.Fatalf("documents = %d", len(documents))
 	}
 }
+
+// The failure this package is for, arrived at from the inside.
+//
+// One execution with nothing citable makes CoverGaps fail. It must still hand
+// back everything it had — the rule pass's findings and the gaps it already
+// filled — because a caller that gets nil reports no findings at all for a run
+// where thirty-nine of forty were classified fine.
+func TestCoverGapsKeepsWhatItBuiltWhenItFails(t *testing.T) {
+	classified, err := Encode(Verdict{
+		TestCaseRef: "TC-001", FailureClass: qaschema.FailureClassNETWORKERROR,
+		RootCause: "the request never completed", Confidence: 0.95,
+		Evidence: []string{"e0-screenshot-0"},
+	})
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+
+	// TC-002 can be covered; TC-003 has nothing to cite and cannot be.
+	uncitable := bundleFor("TC-003")
+	uncitable.Artifacts = nil
+	bundles := []Bundle{bundleFor("TC-001"), bundleFor("TC-002"), uncitable}
+
+	out, filled, err := CoverGaps([]json.RawMessage{classified}, bundles, "n/a")
+	if err == nil {
+		t.Fatal("an execution with no citable evidence was passed over silently")
+	}
+	if len(out) != 2 {
+		t.Fatalf("findings = %d, want the rule-pass one and the gap that could be filled", len(out))
+	}
+	if len(filled) != 1 || filled[0] != "TC-002" {
+		t.Fatalf("filled = %v, want TC-002", filled)
+	}
+	// The one that survived is the classified one, not a placeholder.
+	if decodeFinding(t, out[0]).FailureClass != qaschema.FailureClassNETWORKERROR {
+		t.Fatalf("the rule-pass finding was lost: %s", out[0])
+	}
+}
+
+// Same rule one layer up: a document the floor pass cannot re-read must not
+// take the ones it already handled with it.
+func TestApplyConfidenceFloorKeepsWhatItProcessedWhenItFails(t *testing.T) {
+	good, err := Encode(Verdict{
+		TestCaseRef: "TC-001", FailureClass: qaschema.FailureClassPRODUCTBUG,
+		RootCause: "500 from the API", Confidence: 0.9, Evidence: []string{"e0-screenshot-0"},
+	})
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+
+	out, _, err := ApplyConfidenceFloor(
+		[]json.RawMessage{good, json.RawMessage(`{"not":`)}, MinConfidence)
+	if err == nil {
+		t.Fatal("an unreadable finding was accepted")
+	}
+	if len(out) != 1 {
+		t.Fatalf("findings = %d, want the one that was readable", len(out))
+	}
+}

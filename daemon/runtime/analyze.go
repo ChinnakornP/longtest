@@ -103,10 +103,17 @@ func (rc *runController) analyse(
 				"the failure analyst produced no usable verdict; the executions it could not classify are recorded as UNKNOWN",
 				map[string]any{"error": reason, "executions": len(ambiguous)})
 		default:
+			// Whatever the floor pass managed is kept before its error is
+			// looked at, and the error is held rather than returned, so the
+			// coverage pass below still runs. Returning here would drop the
+			// rule pass's findings on the way out — the exact opposite of what
+			// this phase promises.
 			floored, downgraded, floorErr := analysis.ApplyConfidenceFloor(modelFindings, analysis.MinConfidence)
+			documents = append(documents, floored...)
 			if floorErr != nil {
-				return documents, evidence, failure(qaschema.RunErrorCodeAgentOutputInvalid, floorErr,
+				analystErr = failure(qaschema.RunErrorCodeAgentOutputInvalid, floorErr,
 					"could not apply the confidence floor to the analysis result")
+				reason = floorErr.Error()
 			}
 			if len(downgraded) > 0 {
 				sort.Strings(downgraded)
@@ -115,13 +122,18 @@ func (rc *runController) analyse(
 						len(downgraded), analysis.MinConfidence),
 					map[string]any{"testCases": downgraded, "floor": analysis.MinConfidence})
 			}
-			documents = append(documents, floored...)
-			reason = "the analyst returned no finding for it"
+			if floorErr == nil {
+				reason = "the analyst returned no finding for it"
+			}
 		}
 	}
 
 	// Unconditional, and before the analyst's error is returned: whatever
 	// happened above, a failed execution leaves here with a finding.
+	//
+	// CoverGaps returns what it built even when it fails — an execution it
+	// cannot write a finding for does not take the rest down with it — so the
+	// assignment happens before the error is looked at, not after.
 	documents, filled, err := analysis.CoverGaps(documents, bundles, reason)
 	if err != nil {
 		return documents, evidence, failure(qaschema.RunErrorCodeInternal, err, "could not complete the findings")

@@ -9,9 +9,15 @@
 // assembles one [Bundle] per failed execution: the step that failed and the one
 // before it, the assertions that disagreed, the console errors, the requests
 // that came back 4xx/5xx or never came back at all, the test case as written,
-// the slice of the application map that case targets, and how the same case
-// went last time. No model has been invoked yet, and the bundle is a pure
-// function of the run — the same run analysed twice produces the same bundle.
+// and the slice of the application map that case targets. No model has been
+// invoked yet, and the bundle is a pure function of the run — the same run
+// analysed twice produces the same bundle.
+//
+// The bundle can also carry how the same case went in an earlier run, which is
+// the difference between "broken since Tuesday" and "broken by what you just
+// deployed". Nothing sets it yet: the daemon is never told a previous run's
+// outcome, so wiring it is a change at the server -> daemon boundary rather
+// than in this package. See LONG-28.
 //
 // The second is [Classify], the rule pass. Some failures do not need a model
 // and are worse off for having one: a request that was refused at the transport

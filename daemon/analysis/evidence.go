@@ -51,6 +51,8 @@ type ConsoleEntry struct {
 // broke with the change you just deployed", which is the first thing a person
 // reading a failure wants to know and the last thing a single run can tell
 // them.
+//
+// NOT YET POPULATED in a real run: see [Collector.Previous].
 type PriorOutcome struct {
 	RunID        string                 `json:"runId,omitempty"`
 	Result       qaschema.Outcome       `json:"result"`
@@ -150,7 +152,13 @@ type Collector struct {
 	AppMap *qaschema.ApplicationMap
 
 	// Previous is the outcome of each case in an earlier run, keyed by ref.
-	// Optional; empty on a project's first run.
+	//
+	// Nothing sets it on the production path today, so `previousRun` does not
+	// appear in the file an analyst reads. That is not an oversight in this
+	// package: run.assign carries no earlier result, so the daemon has nothing
+	// to pass. Filling it is a contract change at the server -> daemon
+	// boundary (LONG-28), and the field is here so that change is a wiring one
+	// rather than a redesign. Tests set it directly.
 	Previous map[string]PriorOutcome
 
 	Logger *slog.Logger

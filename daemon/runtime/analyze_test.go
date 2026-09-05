@@ -542,3 +542,69 @@ func analysisAttempts(mock *agent.MockProvider) int {
 	}
 	return count
 }
+
+// An execution the phase cannot write a finding for does not take the rest of
+// the report with it.
+//
+// The path is real rather than theoretical. uploadEvidenceBundles warns and
+// carries on when an upload fails, which is deliberate — losing a whole report
+// because one JSON file did not reach S3 is the wrong trade. But an execution
+// that failed at the transport captured no evidence files of its own, so the
+// bundle was its only citable artifact, and without it no finding@1 can be
+// written for it at all. Before this was fixed, that one execution turned the
+// entire findings list into nil on the way out.
+func TestAnUncoverableFailureDoesNotEmptyTheReport(t *testing.T) {
+	storage := newFakeStorage(t)
+	// TC-002's evidence bundle is refused; everything else uploads.
+	storage.RejectKeys(func(key string) bool {
+		return strings.Contains(key, "TC-002/") && strings.Contains(key, evidenceFileName)
+	})
+
+	agent := fullRunAgent(t,
+		[]any{testCase("TC-001", "Create employee"), testCase("TC-002", "Edit employee")}, nil)
+
+	h := newHarness(t, harnessOptions{agent: agent})
+	h.executor.onRun = func(params executor.TestcaseRunParams) qaschema.ExecutionResult {
+		if params.TestCase.ID == "TC-002" {
+			// A transport failure: the executor never got far enough to
+			// capture anything, which is what synthesiseFailure produces.
+			now := time.Now().UTC().Format(time.RFC3339)
+			return qaschema.ExecutionResult{
+				Version: 1, TestCaseID: params.TestCase.ID, Result: qaschema.OutcomeError,
+				Message:   ptr("the executor could not run this test case"),
+				Steps:     []qaschema.StepResult{},
+				Artifacts: []qaschema.Artifact{},
+				StartedAt: now, EndedAt: now,
+			}
+		}
+		return failedWithNetworkLog(t, params, []map[string]any{
+			{"method": "GET", "url": "http://app.internal:3000/", "startedAt": "2026-09-05T10:00:00Z"},
+		})
+	}
+
+	h.backend.ExpectType(5*time.Second, qaschema.EnvelopeTypeHello)
+	h.backend.Send(assignFrame(t, assignOptions{
+		mode: qaschema.RunAssignPayloadModeFull, putBase: storage.PutBase(),
+	}))
+
+	payload := decodeAs[qaschema.RunResultPayload](t,
+		h.backend.ExpectType(30*time.Second, qaschema.EnvelopeTypeRunResult).Payload)
+
+	// The phase failed, and says so — an execution with no finding is a real
+	// problem and must not be reported as a clean run.
+	if payload.Status != qaschema.RunResultPayloadStatusFailed {
+		t.Fatalf("status = %q, want the uncoverable execution to fail the phase", payload.Status)
+	}
+	// But TC-001 was classified by rule before any of that, and its finding
+	// reaches the backend.
+	if len(payload.Findings) != 1 {
+		t.Fatalf("findings = %+v, want the one execution that could be classified", payload.Findings)
+	}
+	if payload.Findings[0].TestCaseID != "TC-001" ||
+		payload.Findings[0].FailureClass != qaschema.FailureClassNETWORKERROR {
+		t.Fatalf("finding = %+v", payload.Findings[0])
+	}
+	if len(payload.Executions) != 2 {
+		t.Fatalf("executions = %d; a failed analysis threw away the run", len(payload.Executions))
+	}
+}

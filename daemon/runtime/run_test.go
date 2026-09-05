@@ -25,6 +25,16 @@ type fakeStorage struct {
 
 	mu      sync.Mutex
 	objects map[string][]byte
+	// reject, when set, fails the PUT for any key it matches — the shape of a
+	// storage backend that is up but refusing one object.
+	reject func(key string) bool
+}
+
+// RejectKeys makes every matching upload fail.
+func (fs *fakeStorage) RejectKeys(match func(key string) bool) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	fs.reject = match
 }
 
 func newFakeStorage(t *testing.T) *fakeStorage {
@@ -42,13 +52,21 @@ func newFakeStorage(t *testing.T) *fakeStorage {
 			http.Error(w, "unsigned request", http.StatusForbidden)
 			return
 		}
+		key := strings.TrimPrefix(r.URL.Path, "/bucket/")
+		fs.mu.Lock()
+		reject := fs.reject
+		fs.mu.Unlock()
+		if reject != nil && reject(key) {
+			http.Error(w, "refused", http.StatusForbidden)
+			return
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		fs.mu.Lock()
-		fs.objects[strings.TrimPrefix(r.URL.Path, "/bucket/")] = body
+		fs.objects[key] = body
 		fs.mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))

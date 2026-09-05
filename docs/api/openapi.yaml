@@ -1283,7 +1283,24 @@ components:
         durationMs: { type: integer }
         target:
           type: object
-          description: The step's target as the test case declared it — `{ref}` or `{locator, unstable}`.
+          description: |
+            What the step resolved to at run time — NOT the target the test
+            case declared.
+
+            The name is a historical one and the payload is the authority:
+            ingest writes `{"resolvedLocator": ...}` and the report forwards
+            that object unchanged, so `target.ref` does not exist here. The
+            declared target lives on the test case document, which is a
+            separate read.
+          required: [resolvedLocator]
+          properties:
+            resolvedLocator:
+              type: [string, 'null']
+              description: |
+                Which entry of the element's fallback chain actually matched.
+                Null when the step resolved nothing — a step that never ran, or
+                one whose target could not be found, which is the case a
+                TEST_BUG finding usually points at.
 
     ExecutionAssertion:
       type: object

@@ -22,10 +22,14 @@ const findingSchemaID = "finding@1"
 // field — but the generated struct tags it omitempty, so encoding a whole-case
 // finding through it drops the property and produces a document that no longer
 // validates. Same reason daemon/runtime keeps forwarded findings as raw bytes.
+//
+// There is no executionId on it, on purpose: the daemon does not know one. It
+// names a case by its ref and ingest resolves that to the execution row
+// (locateFinding). A field the encoder never sets would read like the daemon
+// gets a say in it.
 type wireFinding struct {
 	Version      int      `json:"version"`
 	TestCaseID   string   `json:"testCaseId"`
-	ExecutionID  *string  `json:"executionId,omitempty"`
 	StepIndex    *int     `json:"stepIndex"`
 	FailureClass string   `json:"failureClass"`
 	Summary      string   `json:"summary,omitempty"`
@@ -99,6 +103,10 @@ func EncodeAll(verdicts []Verdict) ([]json.RawMessage, error) {
 // application code. A 0.2-confidence PRODUCT_BUG spends an engineer's afternoon
 // on the strength of a guess, and UNKNOWN with the same prose spends five
 // minutes and reaches the same place.
+// On error it returns the findings it had already processed. Every function
+// here does: a caller that drops them on the way out turns one unreadable
+// finding into a report with no findings at all, which is the failure this
+// package exists to prevent.
 func ApplyConfidenceFloor(documents []json.RawMessage, floor float64) ([]json.RawMessage, []string, error) {
 	out := make([]json.RawMessage, 0, len(documents))
 	var downgraded []string
@@ -106,7 +114,7 @@ func ApplyConfidenceFloor(documents []json.RawMessage, floor float64) ([]json.Ra
 	for _, document := range documents {
 		var finding qaschema.Finding
 		if err := json.Unmarshal(document, &finding); err != nil {
-			return nil, nil, fmt.Errorf("analysis: re-read a finding to apply the confidence floor: %w", err)
+			return out, downgraded, fmt.Errorf("analysis: re-read a finding to apply the confidence floor: %w", err)
 		}
 		if finding.Confidence >= floor || finding.FailureClass == qaschema.FailureClassUNKNOWN {
 			out = append(out, document)
@@ -118,7 +126,7 @@ func ApplyConfidenceFloor(documents []json.RawMessage, floor float64) ([]json.Ra
 		// anything a newer minor version of the contract added.
 		patched, err := setFailureClass(document, qaschema.FailureClassUNKNOWN)
 		if err != nil {
-			return nil, nil, err
+			return out, downgraded, err
 		}
 		out = append(out, patched)
 		downgraded = append(downgraded, finding.TestCaseID)
@@ -156,12 +164,17 @@ func setFailureClass(document []byte, class qaschema.FailureClass) (json.RawMess
 // The findings it writes are loud rather than plausible. They say the analysis
 // did not produce an answer, and they cite the evidence bundle, so the reader
 // is one click from what the analyst was looking at when it failed to conclude.
+//
+// On error it returns every finding it has so far — the ones passed in and the
+// gaps it had already filled — because the one execution it cannot write a
+// finding for must not take the other thirty-nine down with it. That is the
+// whole point of this function, and returning nil here would contradict it.
 func CoverGaps(documents []json.RawMessage, bundles []Bundle, reason string) ([]json.RawMessage, []string, error) {
 	covered := make(map[string]struct{}, len(documents))
 	for _, document := range documents {
 		var finding qaschema.Finding
 		if err := json.Unmarshal(document, &finding); err != nil {
-			return nil, nil, fmt.Errorf("analysis: re-read a finding to check coverage: %w", err)
+			return documents, nil, fmt.Errorf("analysis: re-read a finding to check coverage: %w", err)
 		}
 		covered[finding.TestCaseID] = struct{}{}
 	}
@@ -178,7 +191,7 @@ func CoverGaps(documents []json.RawMessage, bundles []Bundle, reason string) ([]
 			// execution. The caller gives every bundle an evidence artifact
 			// precisely so this cannot happen; if it somehow has, saying so is
 			// the only honest option left.
-			return nil, nil, fmt.Errorf(
+			return out, filled, fmt.Errorf(
 				"analysis: %s failed and has no artifact to cite, so no finding can be written for it", b.TestCaseRef)
 		}
 		document, err := Encode(Verdict{
@@ -195,7 +208,7 @@ func CoverGaps(documents []json.RawMessage, bundles []Bundle, reason string) ([]
 			Evidence:  evidence,
 		})
 		if err != nil {
-			return nil, nil, err
+			return out, filled, err
 		}
 		out = append(out, document)
 		filled = append(filled, b.TestCaseRef)
