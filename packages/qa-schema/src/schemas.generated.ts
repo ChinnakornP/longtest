@@ -24,7 +24,7 @@ export const SCHEMA_URIS: Record<SchemaId, string> = {
 
 export const CONTRACT_VERSIONS: Record<SchemaId, string> = {
   'application-map@1': '1.0.0',
-  'daemon-envelope@1': '1.0.0',
+  'daemon-envelope@1': '1.1.0',
   'execution-result@1': '1.0.0',
   'finding@1': '1.0.0',
   'test-case@1': '1.0.0',
@@ -289,7 +289,7 @@ export const SCHEMA_DOCUMENTS: Record<SchemaId, unknown> = {
   'daemon-envelope@1': {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://qa.local/schema/daemon-envelope/1",
-    "x-contract-version": "1.0.0",
+    "x-contract-version": "1.1.0",
     "title": "Daemon control-plane envelope",
     "description": "Contract D. Every frame on the single outbound WebSocket between a runtime daemon and the backend. Delivery is at-least-once and the server deduplicates on (runId, seq), so seq is part of the envelope rather than the payload.",
     "$ref": "#/$defs/Envelope",
@@ -750,6 +750,16 @@ export const SCHEMA_DOCUMENTS: Record<SchemaId, unknown> = {
             "items": {
               "$ref": "https://qa.local/schema/test-case/1#/$defs/TestCase"
             }
+          },
+          "fixtures": {
+            "type": "array",
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$"
+            },
+            "description": "Names of the fixtures registered for this project, without the `fixture:` prefix. Added in 1.1.0, so that a planner can be told which logins it may reference and the daemon can reject a plan that invented one while the model is still there to be asked again. Names only, and there is no property here that could carry a value: the credentials live in the daemon's own store, and the backend that sends this frame does not have them."
           },
           "artifactUpload": {
             "$ref": "#/$defs/ArtifactUpload"

@@ -86,6 +86,8 @@ func (a *agentRunner) Run(ctx context.Context, task AgentTask) ([]byte, error) {
 		OutputAsList:   task.Phase == workspace.PhaseAnalysis,
 		Inputs:         task.Inputs,
 		AllowedOrigins: allowedOrigins(task.BaseURL),
+		FixtureNames:   task.FixtureNames,
+		Review:         task.Review,
 		RunID:          task.RunID,
 		BaseURL:        task.BaseURL,
 		Events:         events,

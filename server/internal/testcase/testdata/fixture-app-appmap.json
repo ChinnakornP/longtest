@@ -1,0 +1,347 @@
+{
+  "version": 1,
+  "baseUrl": "http://127.0.0.1:4173",
+  "generatedAtRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+  "pages": [
+    {
+      "id": "page.login",
+      "path": "/login",
+      "title": "Sign in",
+      "authRequired": false,
+      "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+      "elements": [
+        {
+          "ref": "login.email",
+          "type": "input",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "login-email"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Email"
+        },
+        {
+          "ref": "login.password",
+          "type": "input",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "login-password"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Password"
+        },
+        {
+          "ref": "login.submit",
+          "type": "button",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "login-submit"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Sign in"
+        },
+        {
+          "ref": "login.error",
+          "type": "text",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "login-error"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Invalid credentials"
+        }
+      ]
+    },
+    {
+      "id": "page.employees",
+      "path": "/employees",
+      "title": "Employees",
+      "authRequired": true,
+      "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+      "elements": [
+        {
+          "ref": "emp.search",
+          "type": "input",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-search"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Search"
+        },
+        {
+          "ref": "emp.search.go",
+          "type": "button",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-search-go"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Search"
+        },
+        {
+          "ref": "emp.add",
+          "type": "link",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "add-emp"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Add Employee"
+        },
+        {
+          "ref": "emp.table",
+          "type": "table",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-table"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90"
+        },
+        {
+          "ref": "emp.row",
+          "type": "row",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-row"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90"
+        },
+        {
+          "ref": "emp.edit",
+          "type": "link",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-edit"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Edit"
+        },
+        {
+          "ref": "emp.delete",
+          "type": "button",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-delete"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Delete"
+        },
+        {
+          "ref": "emp.logout",
+          "type": "link",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "logout"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Sign out"
+        }
+      ]
+    },
+    {
+      "id": "page.employee_new",
+      "path": "/employees/new",
+      "title": "New employee",
+      "authRequired": true,
+      "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+      "elements": [
+        {
+          "ref": "emp.first_name",
+          "type": "input",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-first-name"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "First name"
+        },
+        {
+          "ref": "emp.last_name",
+          "type": "input",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-last-name"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Last name"
+        },
+        {
+          "ref": "emp.email",
+          "type": "input",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-email"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Email"
+        },
+        {
+          "ref": "emp.save",
+          "type": "button",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-save"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Save"
+        },
+        {
+          "ref": "emp.error",
+          "type": "text",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-error"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "All fields are required"
+        }
+      ]
+    },
+    {
+      "id": "page.employee_edit",
+      "path": "/employees/1/edit",
+      "title": "Edit employee",
+      "authRequired": true,
+      "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+      "elements": [
+        {
+          "ref": "emp.edit.first_name",
+          "type": "input",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-first-name"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "First name"
+        },
+        {
+          "ref": "emp.edit.email",
+          "type": "input",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-email"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Email"
+        },
+        {
+          "ref": "emp.edit.save",
+          "type": "button",
+          "locators": [
+            {
+              "kind": "testId",
+              "value": "employee-save"
+            }
+          ],
+          "lastSeenRunId": "4f1d4c0a-9d2e-4a1b-8f3c-2b6e5a7c1d90",
+          "label": "Save"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "id": "wf.sign_in",
+      "name": "Sign in",
+      "expectedOutcome": "The employee list is shown",
+      "authRequired": false,
+      "path": [
+        "page.login",
+        "login.email",
+        "login.password",
+        "login.submit",
+        "page.employees"
+      ]
+    },
+    {
+      "id": "wf.create_employee",
+      "name": "Create an employee",
+      "expectedOutcome": "The new employee appears in the list",
+      "authRequired": true,
+      "path": [
+        "page.employees",
+        "emp.add",
+        "page.employee_new",
+        "emp.first_name",
+        "emp.last_name",
+        "emp.email",
+        "emp.save"
+      ]
+    },
+    {
+      "id": "wf.search_employees",
+      "name": "Search the employee list",
+      "expectedOutcome": "The table shows only matching rows",
+      "authRequired": true,
+      "path": [
+        "page.employees",
+        "emp.search",
+        "emp.search.go",
+        "emp.table"
+      ]
+    },
+    {
+      "id": "wf.delete_employee",
+      "name": "Delete an employee",
+      "expectedOutcome": "The row is gone from the list",
+      "authRequired": true,
+      "path": [
+        "page.employees",
+        "emp.row",
+        "emp.delete",
+        "emp.table"
+      ]
+    },
+    {
+      "id": "wf.edit_employee",
+      "name": "Edit an employee",
+      "expectedOutcome": "The changed details appear in the list",
+      "authRequired": true,
+      "path": [
+        "page.employee_edit",
+        "emp.edit.first_name",
+        "emp.edit.email",
+        "emp.edit.save"
+      ]
+    }
+  ]
+}

@@ -671,6 +671,16 @@ type Project struct {
 	UpdatedAt  pgtype.Timestamptz
 }
 
+type ProjectFixture struct {
+	ID          uuid.UUID
+	OrgID       uuid.UUID
+	ProjectID   uuid.UUID
+	Name        string
+	Description string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
 type Run struct {
 	ID             uuid.UUID
 	OrgID          uuid.UUID

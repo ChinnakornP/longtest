@@ -13,6 +13,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countApprovedTestCasesByCategory = `-- name: CountApprovedTestCasesByCategory :many
+SELECT category, count(*) AS total FROM test_cases
+WHERE org_id = $1 AND project_id = $2 AND status = 'approved'
+GROUP BY category
+`
+
+type CountApprovedTestCasesByCategoryParams struct {
+	OrgID     uuid.UUID
+	ProjectID uuid.UUID
+}
+
+type CountApprovedTestCasesByCategoryRow struct {
+	Category TestCategory
+	Total    int64
+}
+
+// How many approved cases a project has in each category, for the coverage
+// report. Counted in the database rather than by loading the suite: the
+// coverage endpoint already reads every approved payload for its ref sets, and
+// this is the one number it needs that does not come from them.
+func (q *Queries) CountApprovedTestCasesByCategory(ctx context.Context, arg CountApprovedTestCasesByCategoryParams) ([]CountApprovedTestCasesByCategoryRow, error) {
+	rows, err := q.db.Query(ctx, countApprovedTestCasesByCategory, arg.OrgID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountApprovedTestCasesByCategoryRow{}
+	for rows.Next() {
+		var i CountApprovedTestCasesByCategoryRow
+		if err := rows.Scan(&i.Category, &i.Total); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countTestCases = `-- name: CountTestCases :one
 SELECT count(*) FROM test_cases
 WHERE org_id = $1
@@ -191,6 +231,45 @@ func (q *Queries) GetTestCaseVersion(ctx context.Context, arg GetTestCaseVersion
 	return i, err
 }
 
+const listApprovedTestCasePayloads = `-- name: ListApprovedTestCasePayloads :many
+SELECT id, ref, payload FROM test_cases
+WHERE org_id = $1 AND project_id = $2 AND status = 'approved'
+ORDER BY ref
+`
+
+type ListApprovedTestCasePayloadsParams struct {
+	OrgID     uuid.UUID
+	ProjectID uuid.UUID
+}
+
+type ListApprovedTestCasePayloadsRow struct {
+	ID      uuid.UUID
+	Ref     string
+	Payload json.RawMessage
+}
+
+// The coverage read: what the project actually runs as regression. Approved
+// only, because a draft nobody has read is not a test this project runs.
+func (q *Queries) ListApprovedTestCasePayloads(ctx context.Context, arg ListApprovedTestCasePayloadsParams) ([]ListApprovedTestCasePayloadsRow, error) {
+	rows, err := q.db.Query(ctx, listApprovedTestCasePayloads, arg.OrgID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListApprovedTestCasePayloadsRow{}
+	for rows.Next() {
+		var i ListApprovedTestCasePayloadsRow
+		if err := rows.Scan(&i.ID, &i.Ref, &i.Payload); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listApprovedTestCases = `-- name: ListApprovedTestCases :many
 SELECT id, org_id, project_id, ref, name, priority, category, status, payload, current_version, source_run_id, created_at, updated_at FROM test_cases
 WHERE org_id = $1 AND project_id = $2 AND status = 'approved'
@@ -227,6 +306,63 @@ func (q *Queries) ListApprovedTestCases(ctx context.Context, arg ListApprovedTes
 			&i.SourceRunID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTestCasePayloads = `-- name: ListTestCasePayloads :many
+SELECT id, ref, status, payload FROM test_cases
+WHERE org_id = $1 AND project_id = $2
+ORDER BY ref
+`
+
+type ListTestCasePayloadsParams struct {
+	OrgID     uuid.UUID
+	ProjectID uuid.UUID
+}
+
+type ListTestCasePayloadsRow struct {
+	ID      uuid.UUID
+	Ref     string
+	Status  TestCaseStatus
+	Payload json.RawMessage
+}
+
+// The dedupe read for the planner ingest: every existing case's ref, status
+// and payload, so a freshly planned case whose normalised steps match one of
+// them can be dropped instead of stored as a second row for the same test.
+//
+// Every status, not just approved. An approved match must not be re-queued for
+// review, an archived one must not come back after somebody retired it, and a
+// draft one must not be stored twice under two ids — which is what a re-plan
+// produces, because a planner renumbers its cases every run.
+//
+// Payloads rather than a stored fingerprint column on purpose: the
+// normalisation is contract-aware Go (see internal/testcase/plan.go), and a
+// fingerprint written by an older version of that function would silently stop
+// matching one written by a newer one, with no backfill path and no way to
+// notice. Normalising both sides at read time cannot drift.
+func (q *Queries) ListTestCasePayloads(ctx context.Context, arg ListTestCasePayloadsParams) ([]ListTestCasePayloadsRow, error) {
+	rows, err := q.db.Query(ctx, listTestCasePayloads, arg.OrgID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTestCasePayloadsRow{}
+	for rows.Next() {
+		var i ListTestCasePayloadsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ref,
+			&i.Status,
+			&i.Payload,
 		); err != nil {
 			return nil, err
 		}

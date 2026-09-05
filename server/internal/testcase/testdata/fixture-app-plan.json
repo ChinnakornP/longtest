@@ -1,0 +1,445 @@
+{
+  "version": 1,
+  "testCases": [
+    {
+      "version": 1,
+      "id": "TC-001",
+      "name": "A signed-in admin lands on the employee list",
+      "priority": "critical",
+      "category": "functional",
+      "description": "The session a fixture establishes is accepted, and the list it lands on is the real one.",
+      "preconditions": [
+        "fixture:logged_in_as_admin"
+      ],
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/employees",
+          "waitUntil": "domcontentloaded"
+        },
+        {
+          "action": "waitFor",
+          "target": {
+            "ref": "emp.table"
+          },
+          "state": "visible"
+        }
+      ],
+      "assertions": [
+        {
+          "type": "urlMatches",
+          "value": "/employees$"
+        },
+        {
+          "type": "visible",
+          "target": {
+            "ref": "emp.add"
+          }
+        },
+        {
+          "type": "visible",
+          "target": {
+            "ref": "emp.logout"
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "TC-002",
+      "name": "Create an employee",
+      "priority": "high",
+      "category": "functional",
+      "preconditions": [
+        "fixture:logged_in_as_admin"
+      ],
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/employees"
+        },
+        {
+          "action": "click",
+          "target": {
+            "ref": "emp.add"
+          }
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "emp.first_name"
+          },
+          "value": "Ada"
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "emp.last_name"
+          },
+          "value": "Lovelace"
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "emp.email"
+          },
+          "value": "ada@example.test"
+        },
+        {
+          "action": "click",
+          "target": {
+            "ref": "emp.save"
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "type": "urlMatches",
+          "value": "/employees$"
+        },
+        {
+          "type": "textContains",
+          "target": {
+            "ref": "emp.table"
+          },
+          "value": "ada@example.test"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "TC-003",
+      "name": "The new employee form refuses a whitespace-only required field",
+      "priority": "medium",
+      "category": "validation",
+      "description": "The browser accepts a space; the application must not.",
+      "preconditions": [
+        "fixture:logged_in_as_admin"
+      ],
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/employees/new"
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "emp.first_name"
+          },
+          "value": " "
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "emp.last_name"
+          },
+          "value": "Lovelace"
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "emp.email"
+          },
+          "value": "whitespace@example.test"
+        },
+        {
+          "action": "click",
+          "target": {
+            "ref": "emp.save"
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "type": "visible",
+          "target": {
+            "ref": "emp.error"
+          }
+        },
+        {
+          "type": "textContains",
+          "target": {
+            "ref": "emp.error"
+          },
+          "value": "required"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "TC-004",
+      "name": "The new employee form refuses a duplicate e-mail",
+      "priority": "medium",
+      "category": "validation",
+      "preconditions": [
+        "fixture:logged_in_as_admin",
+        "fixture:seeded_employee"
+      ],
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/employees/new"
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "emp.first_name"
+          },
+          "value": "Grace"
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "emp.last_name"
+          },
+          "value": "Hopper"
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "emp.email"
+          },
+          "value": "seeded@example.test"
+        },
+        {
+          "action": "click",
+          "target": {
+            "ref": "emp.save"
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "type": "textContains",
+          "target": {
+            "ref": "emp.error"
+          },
+          "value": "already exists"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "TC-005",
+      "name": "A signed-out visitor is sent to the sign-in page",
+      "priority": "critical",
+      "category": "navigation",
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/employees"
+        }
+      ],
+      "assertions": [
+        {
+          "type": "urlMatches",
+          "value": "/login"
+        },
+        {
+          "type": "visible",
+          "target": {
+            "ref": "login.submit"
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "TC-006",
+      "name": "The Add Employee link opens the new employee form",
+      "priority": "medium",
+      "category": "navigation",
+      "preconditions": [
+        "fixture:logged_in_as_admin"
+      ],
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/employees"
+        },
+        {
+          "action": "click",
+          "target": {
+            "ref": "emp.add"
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "type": "urlMatches",
+          "value": "/employees/new$"
+        },
+        {
+          "type": "visible",
+          "target": {
+            "ref": "emp.save"
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "TC-007",
+      "name": "Search filters the employee table",
+      "priority": "medium",
+      "category": "ui_behavior",
+      "preconditions": [
+        "fixture:logged_in_as_admin",
+        "fixture:seeded_employee"
+      ],
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/employees"
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "emp.search"
+          },
+          "value": "seeded"
+        },
+        {
+          "action": "click",
+          "target": {
+            "ref": "emp.search.go"
+          }
+        },
+        {
+          "action": "waitFor",
+          "target": {
+            "ref": "emp.table"
+          },
+          "state": "visible"
+        }
+      ],
+      "assertions": [
+        {
+          "type": "elementCount",
+          "target": {
+            "ref": "emp.row"
+          },
+          "value": 1
+        },
+        {
+          "type": "noConsoleError"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "TC-008",
+      "name": "The employee list offers a sign-out control",
+      "priority": "low",
+      "category": "ui_behavior",
+      "preconditions": [
+        "fixture:logged_in_as_admin"
+      ],
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/employees"
+        },
+        {
+          "action": "hover",
+          "target": {
+            "ref": "emp.logout"
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "type": "visible",
+          "target": {
+            "ref": "emp.logout"
+          }
+        },
+        {
+          "type": "textEquals",
+          "target": {
+            "ref": "emp.logout"
+          },
+          "value": "Sign out"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "TC-009",
+      "name": "Wrong credentials are refused",
+      "priority": "critical",
+      "category": "error_handling",
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/login"
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "login.email"
+          },
+          "value": "nobody@example.test"
+        },
+        {
+          "action": "fill",
+          "target": {
+            "ref": "login.password"
+          },
+          "value": "not-the-password"
+        },
+        {
+          "action": "click",
+          "target": {
+            "ref": "login.submit"
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "type": "visible",
+          "target": {
+            "ref": "login.error"
+          }
+        },
+        {
+          "type": "urlMatches",
+          "value": "/login"
+        },
+        {
+          "type": "hidden",
+          "target": {
+            "ref": "emp.table"
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "TC-010",
+      "name": "A record that does not exist reports not found",
+      "priority": "high",
+      "category": "error_handling",
+      "preconditions": [
+        "fixture:logged_in_as_admin"
+      ],
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "/employees/00000000-0000-4000-8000-000000000000"
+        }
+      ],
+      "assertions": [
+        {
+          "type": "httpStatusNot",
+          "value": 500
+        },
+        {
+          "type": "noConsoleError"
+        }
+      ]
+    }
+  ],
+  "rationale": "The signed-out redirect and the refusal of wrong credentials are critical: they are the two ways this application can show data to someone who has not signed in. The create and search workflows are what the application exists to do, so they carry the functional and ui_behavior cases. Validation is written against the new-employee form, the only form here with rules of its own. No case types a password: signing in as a real user is a fixture precondition, and a plan that carried a literal credential would be rejected before it ran.",
+  "coverageNotes": "Two gaps, both deliberate. Nothing deletes an employee: it is the destructive workflow and there is no fixture that seeds a row it is safe to remove, so the plan reaches the list and the table but never the delete control. Nothing edits one either \u2014 the edit form is in the map and no case opens it. The sign-in workflow is walked only as far as its failure path, because signing in successfully is established by a fixture rather than typed: TC-009 fills the form and is refused, and no case types a real password."
+}

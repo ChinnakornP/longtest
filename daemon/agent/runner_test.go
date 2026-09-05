@@ -521,3 +521,119 @@ func TestCapabilitySchemaReportsWhyACLIIsUnusable(t *testing.T) {
 		t.Fatal("the version of an installed CLI is still worth reporting")
 	}
 }
+
+// A schema-valid answer that the phase's own gate rejects is a retry, not a
+// failure.
+//
+// This is the whole reason Task.Review is inside the runner rather than at the
+// call site. A test plan that names an element ref no page carries validates
+// perfectly against test-plan@1; catching it after the runner has returned
+// would mean failing the run, while catching it here means asking again with
+// the reason attached — and the model usually fixes it.
+func TestReviewRejectionIsRetriedWithFeedback(t *testing.T) {
+	dir := phaseDir(t)
+	mock := NewMockProvider(MockOptions{Answers: map[prompts.Phase][]MockAnswer{
+		// Both answers are valid test-plan@1 documents. Only the gate can
+		// tell them apart, which is the point.
+		prompts.PhasePlanning: {fixtureAnswer(t), fixtureAnswer(t)},
+	}})
+
+	attempts := 0
+	task := planTask(dir)
+	task.Review = func([]byte) []string {
+		attempts++
+		if attempts == 1 {
+			return []string{"TC-900 step 0: unknown_element_ref: no element \"home.hero\" is in this run's application map"}
+		}
+		return nil
+	}
+
+	result, err := newRunner(t, mock).Run(t.Context(), task)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if result.Status != StatusOK {
+		t.Fatalf("status = %q, detail = %q", result.Status, result.Detail)
+	}
+	if result.Attempts != 2 {
+		t.Fatalf("attempts = %d, want 2: the first answer was rejected by the gate", result.Attempts)
+	}
+
+	// The second prompt carries the gate's reason, and carries it framed as
+	// untrusted content — it quotes a ref the model wrote, and on a hijacked
+	// first attempt that string is page content in the model's own voice.
+	calls := mock.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("the CLI was invoked %d times", len(calls))
+	}
+	if !strings.Contains(calls[1].Prompt, "unknown_element_ref") {
+		t.Fatal("the retry prompt does not carry the gate's reason")
+	}
+	if !strings.Contains(prompts.InstructionRegion(calls[1].Prompt), "<<<BLOCK>>>") {
+		t.Fatal("the gate's report reached the prompt outside a framed block")
+	}
+	if strings.Contains(prompts.InstructionRegion(calls[1].Prompt), "unknown_element_ref") {
+		t.Fatal("the gate's report is in the instruction region, where the model treats it as authoritative")
+	}
+}
+
+// A gate that never passes ends the phase as agent_output_invalid, with every
+// attempt on disk — the same outcome a schema failure gets, because from the
+// operator's side they are the same problem: the CLI cannot produce a usable
+// answer.
+func TestReviewRejectionEventuallyFails(t *testing.T) {
+	dir := phaseDir(t)
+	answers := make([]MockAnswer, DefaultMaxAttempts)
+	for i := range answers {
+		answers[i] = fixtureAnswer(t)
+	}
+	mock := NewMockProvider(MockOptions{Answers: map[prompts.Phase][]MockAnswer{
+		prompts.PhasePlanning: answers,
+	}})
+
+	task := planTask(dir)
+	task.Review = func([]byte) []string { return []string{"TC-900: unknown_fixture: no fixture named \"root\""} }
+
+	result, err := newRunner(t, mock).Run(t.Context(), task)
+	if err == nil {
+		t.Fatal("a plan the gate never accepted must be an error")
+	}
+	if result.Status != StatusOutputInvalid {
+		t.Fatalf("status = %q, want %q", result.Status, StatusOutputInvalid)
+	}
+	if result.Attempts != DefaultMaxAttempts {
+		t.Fatalf("attempts = %d, want %d", result.Attempts, DefaultMaxAttempts)
+	}
+	if result.Output != nil {
+		t.Fatalf("a rejected plan must not be handed on: %s", result.Output)
+	}
+}
+
+// The gate runs only on a document that already matches its schema. Running it
+// on a malformed one would bury the one true complaint — "this is not a test
+// plan" — under a page of complaints about fields that are not there.
+func TestReviewDoesNotRunOnASchemaFailure(t *testing.T) {
+	dir := phaseDir(t)
+	mock := NewMockProvider(MockOptions{Answers: map[prompts.Phase][]MockAnswer{
+		prompts.PhasePlanning: {{Output: []byte(`{"version": 1}`)}},
+	}})
+
+	called := false
+	task := planTask(dir)
+	task.Review = func([]byte) []string {
+		called = true
+		return nil
+	}
+
+	if _, err := newRunner(t, mock).Run(t.Context(), task); err == nil {
+		t.Fatal("a malformed plan must be an error")
+	}
+	if called {
+		t.Fatal("the gate ran on a document that is not a test plan")
+	}
+}
+
+func fixtureAnswer(t *testing.T) MockAnswer {
+	t.Helper()
+	return MockAnswer{Output: fixture(t, "planning.json")}
+}

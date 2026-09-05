@@ -40,6 +40,7 @@ var domainTables = map[string]bool{
 	"artifacts":            true,
 	"findings":             true,
 	"finding_evidence":     true,
+	"project_fixtures":     true,
 }
 
 // tenancyTables ARE the tenancy layer: they are how an org_id is established in

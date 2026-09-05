@@ -46,13 +46,22 @@ const (
 // frame is validated against the schema before it is sent, so keeping the
 // documents opaque costs no safety.
 type assignPayload struct {
-	RunID          string                   `json:"runId"`
-	Mode           string                   `json:"mode"`
-	ProjectID      string                   `json:"projectId"`
-	BaseURL        string                   `json:"baseUrl"`
-	AppMap         *qaschema.ApplicationMap `json:"appMap,omitempty"`
-	TestCases      []json.RawMessage        `json:"testCases,omitempty"`
-	ArtifactUpload qaschema.ArtifactUpload  `json:"artifactUpload"`
+	RunID     string                   `json:"runId"`
+	Mode      string                   `json:"mode"`
+	ProjectID string                   `json:"projectId"`
+	BaseURL   string                   `json:"baseUrl"`
+	AppMap    *qaschema.ApplicationMap `json:"appMap,omitempty"`
+	TestCases []json.RawMessage        `json:"testCases,omitempty"`
+	// Fixtures are the project's registered fixture NAMES. They travel with
+	// the assignment so the daemon can tell the planner which logins it may
+	// reference and reject a plan that invented one — while the model is still
+	// there to be asked again, rather than after the run has finished and this
+	// backend rejects the plan on ingest.
+	//
+	// Names only. There is no field here that could carry a value, and this
+	// backend has none to put in one.
+	Fixtures       []string                `json:"fixtures,omitempty"`
+	ArtifactUpload qaschema.ArtifactUpload `json:"artifactUpload"`
 }
 
 // cancelPayload is run.cancel for a user-initiated cancel, which is the only
@@ -101,6 +110,19 @@ func (s *Service) buildAssignFrame(ctx context.Context, claimed dbgen.Run) ([]by
 		default:
 			return nil, err
 		}
+	}
+
+	// A planning run is the one that needs the fixture vocabulary: it is what
+	// the planner writes preconditions from. An execute run's cases already
+	// name theirs, and a discover run writes no test case at all.
+	if claimed.Mode == dbgen.RunModePlan || claimed.Mode == dbgen.RunModeFull {
+		fixtures, err := s.store.ListProjectFixtureNames(ctx, dbgen.ListProjectFixtureNamesParams{
+			OrgID: claimed.OrgID, ProjectID: claimed.ProjectID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list project fixtures: %w", db.Classify(err))
+		}
+		payload.Fixtures = fixtures
 	}
 
 	if claimed.Mode == dbgen.RunModeExecute || claimed.Mode == dbgen.RunModeFull {

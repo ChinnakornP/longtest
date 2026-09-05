@@ -440,6 +440,15 @@ export interface RunAssignPayload {
   agent?: RunAssignPayloadAgent;
   appMap?: ApplicationMap;
   testCases?: TestCase[];
+  /**
+   * Names of the fixtures registered for this project, without the `fixture:` prefix.
+   * Added in 1.1.0, so that a planner can be told which logins it may reference and the
+   * daemon can reject a plan that invented one while the model is still there to be asked
+   * again. Names only, and there is no property here that could carry a value: the
+   * credentials live in the daemon's own store, and the backend that sends this frame does
+   * not have them.
+   */
+  fixtures?: string[];
   artifactUpload: ArtifactUpload;
 }
 

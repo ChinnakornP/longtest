@@ -56,6 +56,46 @@ func (q *Queries) GetElement(ctx context.Context, arg GetElementParams) (Element
 	return i, err
 }
 
+const listElementRefsForProject = `-- name: ListElementRefsForProject :many
+SELECT e.ref
+FROM elements e
+JOIN pages p ON p.id = e.page_id AND p.org_id = e.org_id
+WHERE e.org_id = $1 AND p.project_id = $2
+ORDER BY e.ref
+`
+
+type ListElementRefsForProjectParams struct {
+	OrgID     uuid.UUID
+	ProjectID uuid.UUID
+}
+
+// Every element ref of a project, as bare strings.
+//
+// This is the set a planned test case's `target.ref` values are checked
+// against before a single case is stored. It is refs only rather than
+// ListElementsForProject's full rows because the check is set membership over
+// a few thousand short strings, and materialising locators and labels to throw
+// them away is the allocation this avoids on every planning ingest.
+func (q *Queries) ListElementRefsForProject(ctx context.Context, arg ListElementRefsForProjectParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listElementRefsForProject, arg.OrgID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var ref string
+		if err := rows.Scan(&ref); err != nil {
+			return nil, err
+		}
+		items = append(items, ref)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listElementsForPage = `-- name: ListElementsForPage :many
 SELECT id, org_id, page_id, ref, kind, label, locators, last_seen_run_id, created_at, updated_at FROM elements
 WHERE org_id = $1 AND page_id = $2

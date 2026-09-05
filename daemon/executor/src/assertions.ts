@@ -96,13 +96,34 @@ async function runVisible(
   }
 }
 
+/**
+ * `hidden` is the one assertion an unresolvable target satisfies.
+ *
+ * "No element matches" is exactly what this assertion is claiming, so
+ * reporting it as TARGET_NOT_FOUND would mean the only way to pass is for the
+ * element to exist and be invisible — and the common case, an element that is
+ * absent from the page altogether, could never be asserted at all. It is the
+ * difference between "the employee table is not shown to a signed-out visitor"
+ * being expressible and not.
+ *
+ * `ambiguous` is still a failure: several elements matched, so the thing is
+ * there, several times over.
+ */
 async function runHidden(
   assertion: import('@qa/schema').TargetAssertion,
   ctx: AssertionContext,
   timeout: number,
 ): Promise<AssertionOutcome> {
   const resolved = await resolveOrFail(ctx, assertion.target);
-  if ('fail' in resolved) return { kind: 'unresolved', unresolved: resolved.fail };
+  if ('fail' in resolved) {
+    if (resolved.fail.reason === 'no_match') return { kind: 'pass' };
+    return {
+      kind: 'fail',
+      expected: 'hidden',
+      actual: `${resolved.fail.reason}: ${resolved.fail.tried.join(', ')}`,
+      message: assertion.message ?? 'expected target to be hidden, but several elements matched',
+    };
+  }
   try {
     await resolved.ok.locator.waitFor({ state: 'hidden', timeout });
     return { kind: 'pass' };
