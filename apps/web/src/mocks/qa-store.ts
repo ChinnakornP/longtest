@@ -1,10 +1,21 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Artifact, ArtifactKind, ExecutionResult, Finding, RunEventPayload, RunResultPayload } from '@qa/schema';
+import type {
+  ApplicationMap,
+  Artifact,
+  ArtifactKind,
+  ExecutionResult,
+  Finding,
+  RunEventPayload,
+  RunResultPayload,
+  TestCase as TestCasePayload,
+} from '@qa/schema';
 
 import type {
+  CoverageReport,
   CreateProjectRequest,
   CreateRunRequest,
+  Fixture,
   Project,
   ReportResponse,
   Run,
@@ -12,6 +23,8 @@ import type {
   RunEventRecord,
   RunMode,
   Runtime,
+  TestCaseRecord,
+  TestCaseStatus,
 } from '@/lib/api/qa-types';
 
 import { applyRunEventToCounters } from '@/lib/run-events/counters';
@@ -47,6 +60,9 @@ class QaMockStore {
   runtimes = new Map<string, { orgId: string; runtime: Runtime }>();
   runs = new Map<string, StoredRun>();
   seededOrgRuntimes = new Set<string>();
+  testCases = new Map<string, TestCaseRecord>();
+  fixturesByProject = new Map<string, Fixture[]>();
+  seededProjectTestCases = new Set<string>();
 }
 
 const globalForQaMock = globalThis as unknown as { __qaDomainMockStore?: QaMockStore };
@@ -116,6 +132,375 @@ function seedRuntimesOnce(orgId: string): void {
   };
   qaMockStore.runtimes.set(online.id, { orgId, runtime: online });
   qaMockStore.runtimes.set(offline.id, { orgId, runtime: offline });
+}
+
+// --- Test cases -------------------------------------------------------
+
+/** Seeds a fixed demo suite for a project on first read — there is no real T14 planner run to have generated one yet. */
+function seedTestCasesOnce(projectId: string): void {
+  if (qaMockStore.seededProjectTestCases.has(projectId)) return;
+  qaMockStore.seededProjectTestCases.add(projectId);
+
+  const now = new Date().toISOString();
+  const seeds: Array<{
+    ref: string;
+    name: string;
+    priority: TestCaseRecord['priority'];
+    category: TestCaseRecord['category'];
+    status: TestCaseStatus;
+    payload: TestCasePayload;
+  }> = [
+    {
+      ref: 'TC-001',
+      name: 'Login with valid credentials',
+      priority: 'critical',
+      category: 'functional',
+      status: 'approved',
+      payload: {
+        version: 1,
+        id: 'TC-001',
+        name: 'Login with valid credentials',
+        description: 'A user with a valid account can sign in and reach the dashboard.',
+        priority: 'critical',
+        category: 'functional',
+        preconditions: ['fixture:logged_in_as_admin'],
+        steps: [
+          { action: 'navigate', url: '/login' },
+          { action: 'fill', target: { ref: 'login.email' }, value: 'admin@example.com' },
+          { action: 'fill', target: { ref: 'login.password' }, value: 'REDACTED' },
+          { action: 'click', target: { ref: 'login.submit' } },
+        ],
+        assertions: [{ type: 'urlMatches', value: '^/dashboard' }, { type: 'visible', target: { ref: 'dashboard.heading' } }],
+      },
+    },
+    {
+      ref: 'TC-002',
+      name: 'Reject invalid password',
+      priority: 'high',
+      category: 'validation',
+      status: 'approved',
+      payload: {
+        version: 1,
+        id: 'TC-002',
+        name: 'Reject invalid password',
+        priority: 'high',
+        category: 'validation',
+        steps: [
+          { action: 'navigate', url: '/login' },
+          { action: 'fill', target: { ref: 'login.email' }, value: 'admin@example.com' },
+          { action: 'fill', target: { ref: 'login.password' }, value: 'wrong-password' },
+          { action: 'click', target: { ref: 'login.submit' } },
+        ],
+        assertions: [{ type: 'textContains', target: { ref: 'login.error' }, value: 'Invalid credentials' }],
+      },
+    },
+    {
+      ref: 'TC-003',
+      name: 'Create a new record',
+      priority: 'high',
+      category: 'functional',
+      status: 'draft',
+      payload: {
+        version: 1,
+        id: 'TC-003',
+        name: 'Create a new record',
+        priority: 'high',
+        category: 'functional',
+        preconditions: ['fixture:logged_in_as_admin'],
+        steps: [
+          { action: 'navigate', url: '/records/new' },
+          { action: 'fill', target: { ref: 'records.name' }, value: 'Test record' },
+          { action: 'click', target: { ref: 'records.save' } },
+        ],
+        assertions: [{ type: 'textContains', target: { ref: 'records.list' }, value: 'Test record' }],
+      },
+    },
+    {
+      ref: 'TC-004',
+      name: 'Edit an existing record',
+      priority: 'medium',
+      category: 'functional',
+      status: 'draft',
+      payload: {
+        version: 1,
+        id: 'TC-004',
+        name: 'Edit an existing record',
+        priority: 'medium',
+        category: 'functional',
+        preconditions: ['fixture:logged_in_as_admin'],
+        steps: [
+          { action: 'navigate', url: '/records/1/edit' },
+          { action: 'fill', target: { ref: 'records.name' }, value: 'Updated record' },
+          { action: 'click', target: { ref: 'records.save' } },
+        ],
+        assertions: [{ type: 'textContains', target: { ref: 'records.list' }, value: 'Updated record' }],
+      },
+    },
+    {
+      ref: 'TC-005',
+      name: 'Delete a record',
+      priority: 'medium',
+      category: 'functional',
+      status: 'draft',
+      payload: {
+        version: 1,
+        id: 'TC-005',
+        name: 'Delete a record',
+        priority: 'medium',
+        category: 'functional',
+        preconditions: ['fixture:logged_in_as_admin'],
+        steps: [
+          { action: 'navigate', url: '/records/1' },
+          { action: 'click', target: { ref: 'records.delete' } },
+        ],
+        assertions: [{ type: 'hidden', target: { ref: 'records.row_1' } }],
+      },
+    },
+    {
+      ref: 'TC-006',
+      name: 'Search filters the list',
+      priority: 'low',
+      category: 'ui_behavior',
+      status: 'archived',
+      payload: {
+        version: 1,
+        id: 'TC-006',
+        name: 'Search filters the list',
+        priority: 'low',
+        category: 'ui_behavior',
+        steps: [
+          { action: 'navigate', url: '/records' },
+          { action: 'fill', target: { ref: 'records.search' }, value: 'Test' },
+        ],
+        assertions: [{ type: 'elementCount', target: { ref: 'records.row' }, value: 1, operator: 'gte' }],
+      },
+    },
+  ];
+
+  for (const seed of seeds) {
+    const id = randomUUID();
+    const record: TestCaseRecord = {
+      id,
+      projectId,
+      ref: seed.ref,
+      name: seed.name,
+      priority: seed.priority,
+      category: seed.category,
+      status: seed.status,
+      version: 1,
+      payload: seed.payload,
+      createdAt: now,
+      updatedAt: now,
+    };
+    qaMockStore.testCases.set(id, record);
+  }
+}
+
+export function listTestCases(
+  orgId: string,
+  projectId: string,
+  status?: string,
+): { testCases: TestCaseRecord[]; total: number } | null {
+  const project = getProject(orgId, projectId);
+  if (!project) return null;
+  seedTestCasesOnce(projectId);
+
+  const all = [...qaMockStore.testCases.values()]
+    .filter((tc) => tc.projectId === projectId)
+    .filter((tc) => !status || tc.status === status)
+    .sort((a, b) => a.ref.localeCompare(b.ref));
+  return { testCases: all, total: all.length };
+}
+
+export function getTestCase(orgId: string, testCaseId: string): TestCaseRecord | null {
+  const record = qaMockStore.testCases.get(testCaseId);
+  if (!record) return null;
+  return getProject(orgId, record.projectId) ? record : null;
+}
+
+const NEXT_STATUSES: Record<TestCaseStatus, TestCaseStatus[]> = {
+  draft: ['approved', 'archived'],
+  approved: ['archived', 'draft'],
+  archived: ['draft'],
+};
+
+export function setTestCaseStatus(
+  orgId: string,
+  testCaseId: string,
+  status: string,
+): TestCaseRecord | { errorCode: 'NOT_FOUND' | 'INVALID_TRANSITION' } {
+  const record = getTestCase(orgId, testCaseId);
+  if (!record) return { errorCode: 'NOT_FOUND' };
+  if (!NEXT_STATUSES[record.status].includes(status as TestCaseStatus) && status !== record.status) {
+    return { errorCode: 'INVALID_TRANSITION' };
+  }
+  record.status = status as TestCaseStatus;
+  record.updatedAt = new Date().toISOString();
+  return record;
+}
+
+// --- Coverage -----------------------------------------------------------
+
+/** A canned but internally-consistent report: `partial` is deliberately distinct from `covered`, never a lower percentage of the same color. */
+export function getCoverage(orgId: string, projectId: string): CoverageReport | null {
+  const project = getProject(orgId, projectId);
+  if (!project) return null;
+  seedTestCasesOnce(projectId);
+
+  const approvedCount = [...qaMockStore.testCases.values()].filter(
+    (tc) => tc.projectId === projectId && tc.status === 'approved',
+  ).length;
+
+  return {
+    projectId,
+    approvedCases: approvedCount,
+    workflows: [
+      {
+        ref: 'wf.login',
+        name: 'Sign in',
+        expectedOutcome: 'User reaches the dashboard',
+        status: 'covered',
+        coverageRatio: 1,
+        coveringCaseRefs: ['TC-001'],
+        authRequired: false,
+        risk: 'high',
+        suggestedTests: 0,
+      },
+      {
+        ref: 'wf.record_lifecycle',
+        name: 'Create, edit and delete a record',
+        expectedOutcome: 'A record can be created, edited and removed',
+        status: 'partial',
+        coverageRatio: 0.33,
+        coveringCaseRefs: ['TC-003'],
+        missingRefs: ['records.edit', 'records.delete'],
+        authRequired: true,
+        risk: 'medium',
+        suggestedTests: 2,
+        suggestions: [
+          { category: 'functional', reason: 'No approved case walks edit through to a saved change.' },
+          { category: 'error_handling', reason: 'No case checks what happens when delete is cancelled.' },
+        ],
+      },
+    ],
+    pages: [
+      {
+        ref: 'page.settings',
+        path: '/settings',
+        title: 'Settings',
+        status: 'uncovered',
+        authRequired: true,
+        risk: 'medium',
+        suggestedTests: 1,
+        suggestions: [{ category: 'functional', reason: 'No case reaches the settings page at all.' }],
+      },
+    ],
+    categories: [
+      { category: 'functional', approved: approvedCount, suggestedTests: 2 },
+      { category: 'validation', approved: 1, suggestedTests: 0 },
+      { category: 'navigation', approved: 0, suggestedTests: 1 },
+      { category: 'ui_behavior', approved: 0, suggestedTests: 0 },
+      { category: 'error_handling', approved: 0, suggestedTests: 1 },
+    ],
+    suggestedTestCount: 4,
+    summary: `${approvedCount} approved case(s) cover 1 of 2 workflows and 0 of 1 other discovered page; 4 more tests are suggested to close the gap.`,
+  };
+}
+
+// --- Fixtures -------------------------------------------------------------
+
+export function listFixtures(orgId: string, projectId: string): Fixture[] | null {
+  const project = getProject(orgId, projectId);
+  if (!project) return null;
+  return qaMockStore.fixturesByProject.get(projectId) ?? [];
+}
+
+export function registerFixture(
+  orgId: string,
+  projectId: string,
+  name: string,
+  description: string,
+): Fixture | { errorCode: 'NOT_FOUND' } {
+  const project = getProject(orgId, projectId);
+  if (!project) return { errorCode: 'NOT_FOUND' };
+
+  const existing = qaMockStore.fixturesByProject.get(projectId) ?? [];
+  const already = existing.find((f) => f.name === name);
+  const fixture: Fixture = {
+    name,
+    reference: `fixture:${name}`,
+    description: description || undefined,
+    createdAt: already?.createdAt ?? new Date().toISOString(),
+  };
+  qaMockStore.fixturesByProject.set(projectId, [...existing.filter((f) => f.name !== name), fixture]);
+  return fixture;
+}
+
+export function deleteFixture(orgId: string, projectId: string, name: string): boolean {
+  const project = getProject(orgId, projectId);
+  if (!project) return false;
+  const existing = qaMockStore.fixturesByProject.get(projectId) ?? [];
+  qaMockStore.fixturesByProject.set(projectId, existing.filter((f) => f.name !== name));
+  return true;
+}
+
+// --- Application map -------------------------------------------------------
+
+/** Just enough elements to give the seeded test cases' target refs a human label — not a stand-in for the T13/T14 crawler. */
+export function getApplicationMap(orgId: string, projectId: string): ApplicationMap | null {
+  const project = getProject(orgId, projectId);
+  if (!project) return null;
+
+  return {
+    version: 1,
+    baseUrl: project.baseUrl,
+    projectId,
+    pages: [
+      {
+        id: 'page.login',
+        path: '/login',
+        title: 'Sign in',
+        elements: [
+          { ref: 'login.email', type: 'input', label: 'Email address', locators: [], lastSeenRunId: 'seed' },
+          { ref: 'login.password', type: 'input', label: 'Password', locators: [], lastSeenRunId: 'seed' },
+          { ref: 'login.submit', type: 'button', label: 'Sign in', locators: [], lastSeenRunId: 'seed' },
+          { ref: 'login.error', type: 'other', label: 'Sign-in error message', locators: [], lastSeenRunId: 'seed' },
+        ],
+      },
+      {
+        id: 'page.dashboard',
+        path: '/dashboard',
+        title: 'Dashboard',
+        authRequired: true,
+        elements: [{ ref: 'dashboard.heading', type: 'other', label: 'Dashboard heading', locators: [], lastSeenRunId: 'seed' }],
+      },
+      {
+        id: 'page.records',
+        path: '/records',
+        title: 'Records',
+        authRequired: true,
+        elements: [
+          { ref: 'records.name', type: 'input', label: 'Record name', locators: [], lastSeenRunId: 'seed' },
+          { ref: 'records.save', type: 'button', label: 'Save record', locators: [], lastSeenRunId: 'seed' },
+          { ref: 'records.delete', type: 'button', label: 'Delete record', locators: [], lastSeenRunId: 'seed' },
+          { ref: 'records.list', type: 'other', label: 'Records list', locators: [], lastSeenRunId: 'seed' },
+          { ref: 'records.row_1', type: 'other', label: 'First record row', locators: [], lastSeenRunId: 'seed' },
+          { ref: 'records.row', type: 'other', label: 'Record row', locators: [], lastSeenRunId: 'seed' },
+          { ref: 'records.search', type: 'input', label: 'Search records', locators: [], lastSeenRunId: 'seed' },
+        ],
+      },
+    ],
+    workflows: [
+      { id: 'wf.login', name: 'Sign in', path: ['page.login', 'login.submit', 'page.dashboard'], expectedOutcome: 'User reaches the dashboard' },
+      {
+        id: 'wf.record_lifecycle',
+        name: 'Create, edit and delete a record',
+        path: ['page.records', 'records.save', 'page.records', 'records.delete'],
+        expectedOutcome: 'A record can be created, edited and removed',
+        authRequired: true,
+      },
+    ],
+  };
 }
 
 // --- Runs -----------------------------------------------------------------
