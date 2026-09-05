@@ -12,7 +12,9 @@ export async function GET(
 
   const { projectId } = await params;
   const status = request.nextUrl.searchParams.get('status') ?? undefined;
-  const result = listTestCases(access.orgId, projectId, status);
+  const limit = Number(request.nextUrl.searchParams.get('limit') ?? 50);
+  const offset = Number(request.nextUrl.searchParams.get('offset') ?? 0);
+  const result = listTestCases(access.orgId, projectId, status, limit, offset);
   if (!result) {
     return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Project not found.' } }, { status: 404 });
   }

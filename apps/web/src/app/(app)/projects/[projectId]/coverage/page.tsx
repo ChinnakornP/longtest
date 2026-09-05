@@ -15,6 +15,7 @@ import { useCreateRun } from '@/lib/api/hooks/use-runs';
 import { useRuntimes } from '@/lib/api/hooks/use-runtimes';
 import type { CoverageSuggestion, PageCoverage, WorkflowCoverage } from '@/lib/api/qa-types';
 import { canWrite } from '@/lib/auth/role';
+import { useRecentRunsStore } from '@/lib/stores/recent-runs-store';
 
 export default function CoveragePage() {
   const params = useParams<{ projectId: string }>();
@@ -26,6 +27,7 @@ export default function CoveragePage() {
   const coverage = useCoverage(orgId, params.projectId);
   const runtimes = useRuntimes(orgId);
   const createRun = useCreateRun();
+  const addRecentRun = useRecentRunsStore((s) => s.addRun);
   const onlineRuntimeId = runtimes.data?.find((r) => r.online)?.id ?? null;
 
   const handleGenerateTests = () => {
@@ -36,7 +38,10 @@ export default function CoveragePage() {
     createRun.mutate(
       { projectId: params.projectId, runtimeId: onlineRuntimeId, mode: 'plan' },
       {
-        onSuccess: (run) => router.push(`/runs/${run.id}`),
+        onSuccess: (run) => {
+          addRecentRun(params.projectId, { id: run.id, mode: run.mode, startedAt: run.createdAt });
+          router.push(`/runs/${run.id}`);
+        },
         onError: (error) => {
           toast.error(error instanceof ApiError ? error.message : 'Could not start planning.');
         },

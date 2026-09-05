@@ -19,6 +19,7 @@ import { useTestCases } from '@/lib/api/hooks/use-test-cases';
 import type { TestCaseRecord, TestCaseStatus } from '@/lib/api/qa-types';
 import { TEST_CASE_STATUS_VALUES } from '@/lib/api/qa-types';
 import { canWrite } from '@/lib/auth/role';
+import { useRecentRunsStore } from '@/lib/stores/recent-runs-store';
 import { cn } from '@/lib/utils';
 
 const PRIORITY_ORDER = ['critical', 'high', 'medium', 'low'] as const;
@@ -30,6 +31,9 @@ const FILTER_LABEL: Record<TestCaseStatus | 'all', string> = {
   archived: 'Archived',
 };
 
+/** What the confirm-run dialog is about to start: an explicit selection, or "every approved case" left for the server to resolve. */
+type RunTarget = { kind: 'selected'; ids: string[] } | { kind: 'allApproved' };
+
 export default function TestCasesPage() {
   const params = useParams<{ projectId: string }>();
   const router = useRouter();
@@ -37,21 +41,30 @@ export default function TestCasesPage() {
   const orgId = activeOrg?.id ?? null;
   const canRun = canWrite(activeOrg?.role);
 
-  const testCases = useTestCases(orgId, params.projectId);
+  const [filter, setFilter] = useState<TestCaseStatus | 'all'>('all');
+
+  // Unfiltered, used for the plan summary and the approved count — independent of which tab is active, and read via `total`, never `.length`, since a page this size can be capped by the server's max page size.
+  const summary = useTestCases(orgId, params.projectId, undefined);
+  const approvedSummary = useTestCases(orgId, params.projectId, 'approved', 1);
+  // The visible list: server-side `?status=` filtering, not an in-memory filter of the summary page — dedupes against `summary` automatically when filter is 'all' (same query key).
+  const list = useTestCases(orgId, params.projectId, filter === 'all' ? undefined : filter);
+
   const runtimes = useRuntimes(orgId);
   const createRun = useCreateRun();
+  const addRecentRun = useRecentRunsStore((s) => s.addRun);
 
-  const [filter, setFilter] = useState<TestCaseStatus | 'all'>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [runDialogIds, setRunDialogIds] = useState<string[] | null>(null);
+  const [runTarget, setRunTarget] = useState<RunTarget | null>(null);
   const [runtimeId, setRuntimeId] = useState<string | null>(null);
 
-  const all = testCases.data?.testCases ?? [];
-  const visible = filter === 'all' ? all : all.filter((tc) => tc.status === filter);
+  const visible = list.data?.testCases ?? [];
+  const summaryRows = summary.data?.testCases ?? [];
+  const totalCount = summary.data?.total ?? 0;
+  const approvedCount = approvedSummary.data?.total ?? 0;
+  const truncated = totalCount > summaryRows.length;
 
-  const priorityCounts = useMemo(() => countBy(all, (tc) => tc.priority), [all]);
-  const categoryCounts = useMemo(() => countBy(all, (tc) => tc.category), [all]);
-  const approvedIds = useMemo(() => all.filter((tc) => tc.status === 'approved').map((tc) => tc.id), [all]);
+  const priorityCounts = useMemo(() => countBy(summaryRows, (tc) => tc.priority), [summaryRows]);
+  const categoryCounts = useMemo(() => countBy(summaryRows, (tc) => tc.category), [summaryRows]);
 
   const onlineRuntimes = runtimes.data?.filter((r) => r.online) ?? [];
 
@@ -64,19 +77,28 @@ export default function TestCasesPage() {
     });
   };
 
-  const openRunDialog = (ids: string[]) => {
-    if (ids.length === 0) return;
-    setRunDialogIds(ids);
+  const openRunDialog = (target: RunTarget) => {
+    if (target.kind === 'selected' && target.ids.length === 0) return;
+    setRunTarget(target);
     setRuntimeId(onlineRuntimes[0]?.id ?? null);
   };
 
   const confirmRun = () => {
-    if (!runDialogIds || !runtimeId) return;
+    if (!runTarget || !runtimeId) return;
     createRun.mutate(
-      { projectId: params.projectId, runtimeId, mode: 'execute', testCaseIds: runDialogIds },
+      {
+        projectId: params.projectId,
+        runtimeId,
+        mode: 'execute',
+        // Absent means "every approved case", resolved server-side — sending
+        // the client's own list here would silently narrow "run the suite"
+        // down to only what this browser happened to have loaded.
+        testCaseIds: runTarget.kind === 'selected' ? runTarget.ids : undefined,
+      },
       {
         onSuccess: (run) => {
-          setRunDialogIds(null);
+          addRecentRun(params.projectId, { id: run.id, mode: run.mode, startedAt: run.createdAt });
+          setRunTarget(null);
           router.push(`/runs/${run.id}`);
         },
         onError: (error) => {
@@ -86,12 +108,14 @@ export default function TestCasesPage() {
     );
   };
 
-  if (testCases.isLoading) {
+  if (summary.isLoading || list.isLoading) {
     return <p className="text-muted-foreground text-sm">Loading test cases…</p>;
   }
-  if (testCases.isError) {
+  if (summary.isError || list.isError) {
     return <p className="text-sm text-red-600">Could not load test cases. Try refreshing the page.</p>;
   }
+
+  const runDialogCount = runTarget?.kind === 'selected' ? runTarget.ids.length : approvedCount;
 
   return (
     <div className="space-y-6">
@@ -102,11 +126,15 @@ export default function TestCasesPage() {
         </div>
         {canRun && (
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => openRunDialog([...selected])} disabled={selected.size === 0}>
+            <Button
+              variant="outline"
+              onClick={() => openRunDialog({ kind: 'selected', ids: [...selected] })}
+              disabled={selected.size === 0}
+            >
               Run selected ({selected.size})
             </Button>
-            <Button onClick={() => openRunDialog(approvedIds)} disabled={approvedIds.length === 0}>
-              Run all approved ({approvedIds.length})
+            <Button onClick={() => openRunDialog({ kind: 'allApproved' })} disabled={approvedCount === 0}>
+              Run all approved ({approvedCount})
             </Button>
           </div>
         )}
@@ -115,7 +143,10 @@ export default function TestCasesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Plan summary</CardTitle>
-          <CardDescription>{all.length} test cases total.</CardDescription>
+          <CardDescription>
+            {totalCount} test cases total.
+            {truncated && ` Counts below are based on the first ${summaryRows.length} — refine by status to see the rest.`}
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6 sm:grid-cols-2">
           <div className="space-y-2">
@@ -175,10 +206,14 @@ export default function TestCasesPage() {
         </ul>
       )}
 
-      <Dialog open={runDialogIds !== null} onOpenChange={(open) => !open && setRunDialogIds(null)}>
+      <Dialog open={runTarget !== null} onOpenChange={(open) => !open && setRunTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Run {runDialogIds?.length ?? 0} test case(s)</DialogTitle>
+            <DialogTitle>
+              {runTarget?.kind === 'allApproved'
+                ? `Run all approved test cases (${runDialogCount})`
+                : `Run ${runDialogCount} test case(s)`}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {runtimes.isLoading && <p className="text-muted-foreground text-sm">Loading runtimes…</p>}

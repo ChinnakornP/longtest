@@ -296,20 +296,27 @@ function seedTestCasesOnce(projectId: string): void {
   }
 }
 
+/** limit/offset default to 50/0 and clamp to [1,200]/[0,∞) — the same bounds `#/components/parameters/Limit|Offset` documents, so a dev pointed at this mock sees the same paging behavior the real server would. */
 export function listTestCases(
   orgId: string,
   projectId: string,
   status?: string,
+  limit = 50,
+  offset = 0,
 ): { testCases: TestCaseRecord[]; total: number } | null {
   const project = getProject(orgId, projectId);
   if (!project) return null;
   seedTestCasesOnce(projectId);
 
-  const all = [...qaMockStore.testCases.values()]
+  const clampedLimit = Math.min(200, Math.max(1, limit));
+  const clampedOffset = Math.max(0, offset);
+
+  const matching = [...qaMockStore.testCases.values()]
     .filter((tc) => tc.projectId === projectId)
     .filter((tc) => !status || tc.status === status)
     .sort((a, b) => a.ref.localeCompare(b.ref));
-  return { testCases: all, total: all.length };
+  const page = matching.slice(clampedOffset, clampedOffset + clampedLimit);
+  return { testCases: page, total: matching.length };
 }
 
 export function getTestCase(orgId: string, testCaseId: string): TestCaseRecord | null {

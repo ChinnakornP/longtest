@@ -3,22 +3,41 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api/client';
 import type { SetTestCaseStatusRequest, TestCaseListResponse, TestCaseRecord, TestCaseStatus } from '@/lib/api/qa-types';
 
-export function testCasesQueryKey(orgId: string | null, projectId: string, status?: TestCaseStatus) {
-  return ['test-cases', orgId, projectId, status ?? 'all'] as const;
+/** Server max per `#/components/parameters/Limit` — the highest page a single call can read without paging. */
+export const MAX_TEST_CASE_PAGE_SIZE = 200;
+
+export function testCasesQueryKey(
+  orgId: string | null,
+  projectId: string,
+  status?: TestCaseStatus,
+  limit = MAX_TEST_CASE_PAGE_SIZE,
+) {
+  return ['test-cases', orgId, projectId, status ?? 'all', limit] as const;
 }
 
 export function testCaseQueryKey(orgId: string | null, testCaseId: string) {
   return ['test-cases', orgId, 'detail', testCaseId] as const;
 }
 
-/** GET /api/v1/projects/{projectId}/test-cases?status= */
-export function useTestCases(orgId: string | null, projectId: string, status?: TestCaseStatus) {
+/**
+ * GET /api/v1/projects/{projectId}/test-cases?status=&limit=&offset= — `total`
+ * on the response is the project's real count, independent of how many rows
+ * this page actually returned; a caller after an aggregate (a count, a
+ * summary) should read `total`, never `testCases.length`.
+ */
+export function useTestCases(
+  orgId: string | null,
+  projectId: string,
+  status?: TestCaseStatus,
+  limit: number = MAX_TEST_CASE_PAGE_SIZE,
+) {
   return useQuery({
-    queryKey: testCasesQueryKey(orgId, projectId, status),
-    queryFn: () =>
-      apiFetch<TestCaseListResponse>(
-        `/api/v1/projects/${projectId}/test-cases${status ? `?status=${status}` : ''}`,
-      ),
+    queryKey: testCasesQueryKey(orgId, projectId, status, limit),
+    queryFn: () => {
+      const query = new URLSearchParams({ limit: String(limit) });
+      if (status) query.set('status', status);
+      return apiFetch<TestCaseListResponse>(`/api/v1/projects/${projectId}/test-cases?${query}`);
+    },
     enabled: orgId !== null && projectId.length > 0,
   });
 }
