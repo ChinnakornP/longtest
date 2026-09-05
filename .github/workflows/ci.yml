@@ -310,7 +310,7 @@ jobs:
     steps:
       - name: Every gate passed
         run: |
-          results='${{ join(needs.*.result, " ") }}'
+          results="${{ join(needs.*.result, ' ') }}"
           echo "job results: $results"
           for r in $results; do
             if [ "$r" != "success" ]; then
