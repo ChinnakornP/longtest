@@ -15,6 +15,20 @@ S3_BUCKET    ?= qa-artifacts
 GOLANGCI     := $(shell command -v golangci-lint 2>/dev/null || echo "$$(go env GOPATH)/bin/golangci-lint")
 GO_MODULES   := server daemon
 
+# actionlint is resolved to the pinned build rather than to whatever happens to
+# be on PATH: which workflow bugs this gate catches depends on the version, and
+# CI restores ~/go/bin from a cache that outlives a version bump. `?=` so the
+# ACTIONLINT_VERSION in .github/workflows/ci.yml (which also keys that cache)
+# wins there; this is the value a laptop gets.
+ACTIONLINT_VERSION ?= v1.7.12
+ACTIONLINT   := $(shell $(GO) env GOPATH)/bin/actionlint
+
+# Workflow files parked outside .github/workflows/ - the agent token has no
+# `workflow` scope, so they wait for a human to apply them. GitHub does not
+# validate a file at such a path, and neither does a bare `actionlint` run:
+# that is exactly how the expression bug in run 33937560568 reached main.
+PARKED_WORKFLOWS := $(wildcard .github/*-pending/*.yml .github/*-pending/*.yaml)
+
 .PHONY: help
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -98,7 +112,7 @@ gen-sqlc: ## Generate the sqlc database layer from migrations/ + queries/
 # ---------------------------------------------------------------------------
 
 .PHONY: lint
-lint: lint-go lint-js ## Lint everything
+lint: lint-go lint-js lint-ci ## Lint everything
 
 .PHONY: lint-go
 lint-go: ## gofmt + go vet + golangci-lint on every Go module
@@ -123,6 +137,26 @@ lint-go: ## gofmt + go vet + golangci-lint on every Go module
 lint-js: node_modules ## eslint + tsc across the pnpm workspace
 	$(PNPM) run lint
 	$(PNPM) run typecheck
+
+.PHONY: lint-ci
+lint-ci: ## actionlint: validate the GitHub Actions workflow files
+	@if [ "$$($(ACTIONLINT) -version 2>/dev/null | head -1)" != "$(ACTIONLINT_VERSION)" ]; then \
+	  echo "==> installing actionlint $(ACTIONLINT_VERSION)"; \
+	  $(GO) install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION); \
+	fi
+	@# actionlint shells out to shellcheck for every `run:` block when it can
+	@# find it. ubuntu-latest always can, a laptop often cannot - and a silent
+	@# skip means a local `make lint` is a weaker gate than CI, so say so.
+	@command -v shellcheck >/dev/null 2>&1 \
+	  || echo "note: shellcheck not installed, skipping the run: block checks that CI does run."
+	@echo "==> actionlint .github/workflows"
+	@$(ACTIONLINT)
+	@# One command per group, never a loop: a `for` here would report the exit
+	@# status of its last iteration only (see LONG-22).
+	@if [ -n "$(PARKED_WORKFLOWS)" ]; then \
+	  echo "==> actionlint $(PARKED_WORKFLOWS)"; \
+	  $(ACTIONLINT) $(PARKED_WORKFLOWS); \
+	fi
 
 .PHONY: test
 test: test-go test-js ## Run every test suite
@@ -179,6 +213,7 @@ install: ## Install JS dependencies
 tools: ## Install the pinned Go developer tooling
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
 	$(GO) install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+	$(GO) install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
 
 .PHONY: test-security
 test-security: ## Run the injection corpus and the security boundary tests
