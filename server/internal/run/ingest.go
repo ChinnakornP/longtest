@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,38 +20,30 @@ import (
 	"github.com/ChinnakornP/longtest/server/internal/db/dbgen"
 	"github.com/ChinnakornP/longtest/server/internal/httpx"
 	"github.com/ChinnakornP/longtest/server/internal/realtime"
+	"github.com/ChinnakornP/longtest/server/internal/testcase"
 	"github.com/ChinnakornP/longtest/server/pkg/qaschema"
 )
 
 // resultPayload is run.result as this package reads it.
 //
-// It differs from qaschema.RunResultPayload in one place: a planned test case
-// stays a raw test-case@1 document, because that document is stored verbatim
-// in test_cases.payload and handed back to a daemon unchanged. Round-tripping
-// it through a Go struct would reorder its keys on every run and drop whatever
-// a newer minor version of the contract added.
+// It differs from qaschema.RunResultPayload in one place: the test plan stays
+// raw. Its cases are stored verbatim in test_cases.payload and handed back to
+// a daemon unchanged, and round-tripping one through a Go struct would reorder
+// its keys on every run and drop whatever a newer minor version of the
+// contract added. Keeping the whole plan raw is also what lets it be
+// re-validated against test-plan@1 here rather than trusted.
 type resultPayload struct {
-	Status     string                     `json:"status"`
-	Error      *qaschema.RunError         `json:"error,omitempty"`
-	AppMap     *qaschema.ApplicationMap   `json:"appMap,omitempty"`
-	TestPlan   *rawTestPlan               `json:"testPlan,omitempty"`
+	Status string                   `json:"status"`
+	Error  *qaschema.RunError       `json:"error,omitempty"`
+	AppMap *qaschema.ApplicationMap `json:"appMap,omitempty"`
+	// TestPlan stays as the bytes the planner wrote. They are re-validated
+	// against test-plan@1 here — the daemon validated them too, but a daemon
+	// is a customer-side process holding a pairing token, and "it already
+	// checked" is not a reason to store what it sends.
+	TestPlan   json.RawMessage            `json:"testPlan,omitempty"`
 	Executions []qaschema.ExecutionResult `json:"executions,omitempty"`
 	Findings   []qaschema.Finding         `json:"findings,omitempty"`
 	Artifacts  []qaschema.Artifact        `json:"artifacts,omitempty"`
-}
-
-type rawTestPlan struct {
-	TestCases []json.RawMessage `json:"testCases"`
-}
-
-// testCaseHeader is the handful of fields a planned case needs promoted out of
-// its document and into columns, so the case can be listed, filtered and
-// ordered without opening the jsonb.
-type testCaseHeader struct {
-	ID       string                    `json:"id"`
-	Name     string                    `json:"name"`
-	Priority qaschema.TestCasePriority `json:"priority"`
-	Category qaschema.TestCaseCategory `json:"category"`
 }
 
 // RunResult ingests a terminal result frame and finishes the run.
@@ -75,6 +68,7 @@ func (s *Service) RunResult(ctx context.Context, rc auth.RuntimeCaller, runID uu
 	}
 
 	var finished dbgen.Run
+	var plan *planOutcome
 	err := s.store.WithTx(ctx, func(q *dbgen.Queries) error {
 		current, err := q.GetRunForUpdate(ctx, dbgen.GetRunForUpdateParams{OrgID: rc.OrgID, ID: runID})
 		if err != nil {
@@ -101,6 +95,7 @@ func (s *Service) RunResult(ctx context.Context, rc auth.RuntimeCaller, runID uu
 		if err := ingest.apply(ctx, payload); err != nil {
 			return err
 		}
+		plan = ingest.plan
 
 		refreshed, err := q.RefreshRunCounters(ctx, dbgen.RefreshRunCountersParams{OrgID: rc.OrgID, ID: runID})
 		if err != nil {
@@ -110,17 +105,188 @@ func (s *Service) RunResult(ctx context.Context, rc auth.RuntimeCaller, runID uu
 		finished, err = finishRun(ctx, q, refreshed, payload)
 		return err
 	})
+
+	var rejected *planRejected
+	if errors.As(err, &rejected) {
+		// The transaction above is gone, and with it every row this frame
+		// would have written. The run itself still has to be closed out:
+		// leaving it running forever because its plan was bad is a worse
+		// outcome than an error the operator can read.
+		return s.failRejectedPlan(ctx, rc, runID, rejected)
+	}
 	if err != nil {
 		return err
 	}
 
 	if finished.ID != uuid.Nil {
 		s.publishStatus(finished)
+		// Narrated only on the delivery that actually finished the run. The
+		// daemon's delivery is at-least-once, and a redelivery re-runs the
+		// whole ingest — every write in it is an upsert, so it is harmless —
+		// but the event stream is append-only, and a second plan_stored line
+		// would be the one part of a redelivery a reader could see.
+		s.narratePlan(ctx, rc, runID, plan)
 	}
 	// A finished run frees its runtime, so the scheduler should look for the
 	// next queued run now rather than at the next tick.
 	s.notifyScheduler()
 	return nil
+}
+
+// failRejectedPlan closes out a run whose plan this backend refused.
+//
+// It is a second, minimal transaction on purpose. The first one was rolled
+// back — that rollback is what guarantees no rejected case reached the
+// database — so the run's terminal status cannot be written by it. This writes
+// exactly two things: the run's error, and the event that says why.
+func (s *Service) failRejectedPlan(ctx context.Context, rc auth.RuntimeCaller, runID uuid.UUID, rejected *planRejected) error {
+	logger := httpx.LoggerFrom(ctx)
+	logger.WarnContext(ctx, "rejected an AI test plan",
+		"run_id", runID, "problems", len(rejected.Review.Rejections),
+		"rules", rejected.Message())
+
+	var finished dbgen.Run
+	err := s.store.WithTx(ctx, func(q *dbgen.Queries) error {
+		current, err := q.GetRunForUpdate(ctx, dbgen.GetRunForUpdateParams{OrgID: rc.OrgID, ID: runID})
+		if err != nil {
+			if errors.Is(db.Classify(err), db.ErrNotFound) {
+				return &realtime.ProtocolError{Reason: "that run does not exist"}
+			}
+			return fmt.Errorf("lock run: %w", db.Classify(err))
+		}
+		if isTerminal(current.Status) {
+			// Already closed — a redelivery of a result we rejected the first
+			// time. The rejection is recorded; saying it twice is noise.
+			return nil
+		}
+
+		if err := appendServerEvent(ctx, q, rc.OrgID, current, planRejectedEvent(rejected)); err != nil {
+			return err
+		}
+		finished, err = q.FinishRun(ctx, dbgen.FinishRunParams{
+			OrgID:        rc.OrgID,
+			ID:           runID,
+			Status:       dbgen.RunStatusError,
+			ErrorCode:    string(qaschema.RunErrorCodeAgentOutputInvalid),
+			ErrorMessage: truncate(rejected.Message(), maxRunErrorMessage),
+		})
+		if err != nil && !errors.Is(db.Classify(err), db.ErrNotFound) {
+			return fmt.Errorf("finish rejected run: %w", db.Classify(err))
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if finished.ID != uuid.Nil {
+		s.publishStatus(finished)
+	}
+	s.notifyScheduler()
+	return nil
+}
+
+// narratePlan records what an accepted plan did, as one run event.
+//
+// Best-effort: the cases are already committed, and losing the narration is a
+// missing line in a log, not a missing test case. It is deliberately not part
+// of the ingest transaction for exactly that reason — a failure to write a
+// sentence must not roll back a plan.
+func (s *Service) narratePlan(ctx context.Context, rc auth.RuntimeCaller, runID uuid.UUID, plan *planOutcome) {
+	if plan == nil {
+		return
+	}
+	current, err := s.store.GetRun(ctx, dbgen.GetRunParams{OrgID: rc.OrgID, ID: runID})
+	if err != nil {
+		return
+	}
+	if err := s.store.WithTx(ctx, func(q *dbgen.Queries) error {
+		return appendServerEvent(ctx, q, rc.OrgID, current, planStoredEvent(plan))
+	}); err != nil {
+		httpx.LoggerFrom(ctx).WarnContext(ctx, "could not record the plan outcome",
+			"err", err, "run_id", runID)
+	}
+}
+
+// maxRunErrorMessage bounds what goes into runs.error_message.
+const maxRunErrorMessage = 500
+
+// serverEvent is a run event this backend authored rather than forwarded.
+type serverEvent struct {
+	Code    string
+	Level   dbgen.RunEventLevel
+	Message string
+	Data    map[string]any
+}
+
+// appendServerEvent puts one backend-authored event on a run's stream.
+//
+// The sequence is taken as one past the highest the run has, under the row
+// lock the caller already holds. The daemon owns the sequence space, but a run
+// receiving a server-authored event is a run whose result frame has arrived,
+// which is the last frame a daemon sends for it — so there is no further
+// daemon event to collide with.
+func appendServerEvent(ctx context.Context, q *dbgen.Queries, orgID uuid.UUID, run dbgen.Run, event serverEvent) error {
+	last, err := q.GetLastRunEventSeq(ctx, dbgen.GetLastRunEventSeqParams{OrgID: orgID, RunID: run.ID})
+	if err != nil {
+		return fmt.Errorf("read last event seq: %w", db.Classify(err))
+	}
+	data, err := json.Marshal(event.Data)
+	if err != nil {
+		return fmt.Errorf("marshal run event data: %w", err)
+	}
+	if _, err := q.AppendRunEvent(ctx, dbgen.AppendRunEventParams{
+		OrgID:   orgID,
+		RunID:   run.ID,
+		Seq:     last + 1,
+		Phase:   string(qaschema.RunEventPayloadPhasePlan),
+		Level:   event.Level,
+		Code:    event.Code,
+		Message: event.Message,
+		Data:    data,
+		Ts:      pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true},
+	}); err != nil {
+		return fmt.Errorf("append run event: %w", db.Classify(err))
+	}
+	return nil
+}
+
+// planRejectedEvent is the event a refused plan leaves behind.
+//
+// The rejections travel in `data` as the structured rule/detail pairs the
+// planner's next attempt is told about. They are the validator's own sentences
+// — "no element X exists in this project's application map" — and name a ref
+// the model wrote, which is why the human-facing `message` is the rule counts
+// instead.
+func planRejectedEvent(rejected *planRejected) serverEvent {
+	return serverEvent{
+		Code:    "plan_rejected",
+		Level:   dbgen.RunEventLevelError,
+		Message: rejected.Message(),
+		Data: map[string]any{
+			"rejections": rejected.Review.Rejections,
+			"stored":     0,
+		},
+	}
+}
+
+func planStoredEvent(plan *planOutcome) serverEvent {
+	missing := make([]string, 0, 5)
+	for _, category := range plan.Review.MissingCategories() {
+		missing = append(missing, string(category))
+	}
+	return serverEvent{
+		Code:  "plan_stored",
+		Level: dbgen.RunEventLevelInfo,
+		Message: fmt.Sprintf("stored %d new and %d revised test cases; %d were already approved",
+			plan.Stored.Created, plan.Stored.Revised, len(plan.Review.Duplicates)),
+		Data: map[string]any{
+			"created":           plan.Stored.Created,
+			"revised":           plan.Stored.Revised,
+			"duplicates":        plan.Review.Duplicates,
+			"skippedApproved":   plan.Stored.SkippedApproved,
+			"missingCategories": missing,
+		},
+	}
 }
 
 // terminalStatusFor decides what a result frame means for the run row.
@@ -197,7 +363,11 @@ type ingestion struct {
 	// would be a thousand statements inside the ingest transaction.
 	testCases       map[string]dbgen.TestCase
 	executionByCase map[uuid.UUID]dbgen.Execution
-	logger          interface {
+	// plan is what the planning half of this frame did, set only when the
+	// frame carried a plan and it passed review. It is read after the
+	// transaction commits, to narrate the outcome.
+	plan   *planOutcome
+	logger interface {
 		WarnContext(ctx context.Context, msg string, args ...any)
 	}
 }
@@ -293,39 +463,79 @@ func (in *ingestion) applicationMap(ctx context.Context, appMap *qaschema.Applic
 	return nil
 }
 
-// testPlan stores the cases the planner wrote.
+// testPlan reviews the plan and stores what survives.
 //
-// UpsertPlannedTestCase refuses to overwrite a case a human already approved,
-// so re-planning a project adds and revises drafts without silently rewriting
-// the regression suite underneath the person who approved it.
-func (in *ingestion) testPlan(ctx context.Context, plan *rawTestPlan) error {
-	if plan == nil {
+// This is the boundary the whole planning feature turns on: an AI wrote the
+// document, so the document is DATA until this backend has checked it against
+// what this project actually has. testcase.ReviewPlan is where those checks
+// live; the rule they enforce is all-or-nothing. A plan with one unresolvable
+// element ref in it is rejected whole, and the ingest transaction is rolled
+// back, so a rejected plan leaves not one row behind.
+//
+// Rejecting rather than dropping the bad case matters: a suite silently
+// missing the case that would have caught the bug reads, to the person looking
+// at it, exactly like a suite that was written that way on purpose.
+func (in *ingestion) testPlan(ctx context.Context, document json.RawMessage) error {
+	if len(document) == 0 {
 		return nil
 	}
-	for _, document := range plan.TestCases {
-		var header testCaseHeader
-		if err := json.Unmarshal(document, &header); err != nil {
-			return &realtime.ProtocolError{Reason: "a planned test case is not decodable"}
-		}
-		if _, err := in.q.UpsertPlannedTestCase(ctx, dbgen.UpsertPlannedTestCaseParams{
-			OrgID:       in.orgID,
-			ProjectID:   in.run.ProjectID,
-			Ref:         header.ID,
-			Name:        header.Name,
-			Priority:    dbgen.TestPriority(header.Priority),
-			Category:    dbgen.TestCategory(header.Category),
-			Payload:     document,
-			SourceRunID: uuid.NullUUID{UUID: in.run.ID, Valid: true},
-		}); err != nil {
-			// Not a row: the ON CONFLICT ... WHERE status = 'draft' clause
-			// matched an approved case and declined to touch it.
-			if errors.Is(db.Classify(err), db.ErrNotFound) {
-				continue
-			}
-			return fmt.Errorf("upsert planned test case %s: %w", header.ID, db.Classify(err))
-		}
+
+	planCtx, err := testcase.LoadPlanContext(ctx, in.q, in.orgID, in.run.ProjectID)
+	if err != nil {
+		return err
 	}
+	review := testcase.ReviewPlan(document, planCtx)
+	if !review.OK() {
+		return &planRejected{RunID: in.run.ID, Review: review}
+	}
+
+	stored, err := testcase.PersistPlan(ctx, in.q, in.orgID, in.run.ProjectID,
+		uuid.NullUUID{UUID: in.run.ID, Valid: true}, review.Accepted)
+	if err != nil {
+		return err
+	}
+	in.plan = &planOutcome{Review: review, Stored: stored}
 	return nil
+}
+
+// planRejected is a plan that failed review. It is an error so that returning
+// it rolls the ingest transaction back — that rollback IS the "no bad data
+// reaches the database" guarantee, rather than a sequence of writes this
+// function has to remember not to make.
+type planRejected struct {
+	RunID  uuid.UUID
+	Review testcase.PlanReview
+}
+
+func (e *planRejected) Error() string {
+	return fmt.Sprintf("the planner's output was rejected: %d problems, first: %s",
+		len(e.Review.Rejections), e.Review.Rejections[0])
+}
+
+// Message is what the run row reports to whoever reads it next. It names the
+// rules rather than quoting the model, because a rejection detail can quote
+// model output, and model output on a hijacked run is page content.
+func (e *planRejected) Message() string {
+	counts := map[string]int{}
+	var order []string
+	for _, rejection := range e.Review.Rejections {
+		if _, seen := counts[rejection.Rule]; !seen {
+			order = append(order, rejection.Rule)
+		}
+		counts[rejection.Rule]++
+	}
+	parts := make([]string, 0, len(order))
+	for _, rule := range order {
+		parts = append(parts, fmt.Sprintf("%s x%d", rule, counts[rule]))
+	}
+	return "the test plan was rejected before anything was stored: " + strings.Join(parts, ", ")
+}
+
+// planOutcome is what a successful review did, kept so the run event can
+// report it after the transaction commits.
+type planOutcome struct {
+	Review testcase.PlanReview
+	Stored testcase.Stored
 }
 
 // loadIndex resolves every case ref the frame mentions, and every execution the

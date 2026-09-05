@@ -53,6 +53,11 @@ type Querier interface {
 	// plus the row lock the UPDATE takes means two daemons racing on the same code
 	// produce exactly one winner, with no read-then-write window in between.
 	ConsumePairingCode(ctx context.Context, arg ConsumePairingCodeParams) (PairingCode, error)
+	// How many approved cases a project has in each category, for the coverage
+	// report. Counted in the database rather than by loading the suite: the
+	// coverage endpoint already reads every approved payload for its ref sets, and
+	// this is the one number it needs that does not come from them.
+	CountApprovedTestCasesByCategory(ctx context.Context, arg CountApprovedTestCasesByCategoryParams) ([]CountApprovedTestCasesByCategoryRow, error)
 	// Guard for "demote/remove the last owner": an org with no owner cannot be
 	// administered again.
 	CountOwners(ctx context.Context, orgID uuid.UUID) (int64, error)
@@ -105,6 +110,7 @@ type Querier interface {
 	DeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error)
 	DeletePage(ctx context.Context, arg DeletePageParams) (int64, error)
 	DeleteProject(ctx context.Context, arg DeleteProjectParams) (int64, error)
+	DeleteProjectFixture(ctx context.Context, arg DeleteProjectFixtureParams) (int64, error)
 	DeleteRuntime(ctx context.Context, arg DeleteRuntimeParams) (int64, error)
 	DeleteTestCase(ctx context.Context, arg DeleteTestCaseParams) (int64, error)
 	DeleteUser(ctx context.Context, id uuid.UUID) (int64, error)
@@ -182,11 +188,22 @@ type Querier interface {
 	// runtime's run in the same organization updates nothing.
 	HeartbeatRunsForRuntime(ctx context.Context, arg HeartbeatRunsForRuntimeParams) (int64, error)
 	LinkFindingEvidence(ctx context.Context, arg LinkFindingEvidenceParams) (int64, error)
+	// The coverage read: what the project actually runs as regression. Approved
+	// only, because a draft nobody has read is not a test this project runs.
+	ListApprovedTestCasePayloads(ctx context.Context, arg ListApprovedTestCasePayloadsParams) ([]ListApprovedTestCasePayloadsRow, error)
 	// The regression suite: what an `execute` run without an explicit selection
 	// runs. One query, ordered so the report reads by priority.
 	ListApprovedTestCases(ctx context.Context, arg ListApprovedTestCasesParams) ([]TestCase, error)
 	ListArtifactsForExecution(ctx context.Context, arg ListArtifactsForExecutionParams) ([]Artifact, error)
 	ListArtifactsForRun(ctx context.Context, arg ListArtifactsForRunParams) ([]Artifact, error)
+	// Every element ref of a project, as bare strings.
+	//
+	// This is the set a planned test case's `target.ref` values are checked
+	// against before a single case is stored. It is refs only rather than
+	// ListElementsForProject's full rows because the check is set membership over
+	// a few thousand short strings, and materialising locators and labels to throw
+	// them away is the allocation this avoids on every planning ingest.
+	ListElementRefsForProject(ctx context.Context, arg ListElementRefsForProjectParams) ([]string, error)
 	ListElementsForPage(ctx context.Context, arg ListElementsForPageParams) ([]Element, error)
 	// Every element of a project in one query. Assembling the Application Map is
 	// then: pages + this + workflows = three statements, whatever the map's size.
@@ -220,6 +237,9 @@ type Querier interface {
 	// what the member cannot do.
 	ListOrganizationsForUser(ctx context.Context, userID uuid.UUID) ([]ListOrganizationsForUserRow, error)
 	ListPages(ctx context.Context, arg ListPagesParams) ([]Page, error)
+	// The plan-ingest read: names only, one statement, no row objects to build.
+	ListProjectFixtureNames(ctx context.Context, arg ListProjectFixtureNamesParams) ([]string, error)
+	ListProjectFixtures(ctx context.Context, arg ListProjectFixturesParams) ([]ProjectFixture, error)
 	ListProjects(ctx context.Context, arg ListProjectsParams) ([]Project, error)
 	// Phase 6 input: how one case has behaved over its recent runs.
 	ListRecentExecutionsForTestCase(ctx context.Context, arg ListRecentExecutionsForTestCaseParams) ([]Execution, error)
@@ -242,6 +262,21 @@ type Querier interface {
 	// edited between "start run" and "daemon picks it up" must not change what runs,
 	// or the report would describe a document that never executed.
 	ListTestCaseDocumentsForRun(ctx context.Context, arg ListTestCaseDocumentsForRunParams) ([]ListTestCaseDocumentsForRunRow, error)
+	// The dedupe read for the planner ingest: every existing case's ref, status
+	// and payload, so a freshly planned case whose normalised steps match one of
+	// them can be dropped instead of stored as a second row for the same test.
+	//
+	// Every status, not just approved. An approved match must not be re-queued for
+	// review, an archived one must not come back after somebody retired it, and a
+	// draft one must not be stored twice under two ids — which is what a re-plan
+	// produces, because a planner renumbers its cases every run.
+	//
+	// Payloads rather than a stored fingerprint column on purpose: the
+	// normalisation is contract-aware Go (see internal/testcase/plan.go), and a
+	// fingerprint written by an older version of that function would silently stop
+	// matching one written by a newer one, with no backfill path and no way to
+	// notice. Normalising both sides at read time cannot drift.
+	ListTestCasePayloads(ctx context.Context, arg ListTestCasePayloadsParams) ([]ListTestCasePayloadsRow, error)
 	ListTestCaseVersions(ctx context.Context, arg ListTestCaseVersionsParams) ([]TestCaseVersion, error)
 	ListTestCases(ctx context.Context, arg ListTestCasesParams) ([]TestCase, error)
 	// Resolves an explicit test-case selection in one statement.
@@ -331,6 +366,10 @@ type Querier interface {
 	// Planner ingest: a re-run of the planner must not duplicate cases, and must
 	// not silently overwrite a case a human already approved.
 	UpsertPlannedTestCase(ctx context.Context, arg UpsertPlannedTestCaseParams) (TestCase, error)
+	// Fixture names. There is deliberately no query here that returns a
+	// credential, because there is no column that holds one.
+	// Registering the same fixture twice is the retry this upsert exists for.
+	UpsertProjectFixture(ctx context.Context, arg UpsertProjectFixtureParams) (ProjectFixture, error)
 	UpsertWorkflow(ctx context.Context, arg UpsertWorkflowParams) (Workflow, error)
 }
 

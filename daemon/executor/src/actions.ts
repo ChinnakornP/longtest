@@ -156,7 +156,16 @@ async function runPress(step: PressStep, ctx: ActionContext, timeout: number): P
 
 async function runWaitFor(step: WaitForStep, ctx: ActionContext, timeout: number): Promise<ActionResult> {
   const resolved = await resolveOrFail(ctx, step.target);
-  if ('fail' in resolved) return { kind: 'unresolved', unresolved: resolved.fail };
+  if ('fail' in resolved) {
+    // Waiting for something to go away is satisfied by it never having been
+    // there. Same reasoning as the `hidden` assertion: reporting
+    // TARGET_NOT_FOUND would make "wait until the dialog is gone" impossible
+    // to express for a dialog that closed before the step ran.
+    if (resolved.fail.reason === 'no_match' && (step.state === 'hidden' || step.state === 'detached')) {
+      return { kind: 'ok', resolved: null, unstable: false };
+    }
+    return { kind: 'unresolved', unresolved: resolved.fail };
+  }
   const r = resolved.ok;
   await r.locator.waitFor({ state: step.state, timeout });
   return { kind: 'ok', resolved: r, unstable: r.unstable };
