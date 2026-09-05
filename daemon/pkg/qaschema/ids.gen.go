@@ -20,7 +20,7 @@ var SchemaIDs = []string{
 // built against an older minor must reject what it does not recognise.
 var ContractVersions = map[string]string{
 	"application-map@1":  "1.0.0",
-	"daemon-envelope@1":  "1.0.0",
+	"daemon-envelope@1":  "1.1.0",
 	"execution-result@1": "1.0.0",
 	"finding@1":          "1.0.0",
 	"test-case@1":        "1.0.0",

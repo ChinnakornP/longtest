@@ -185,6 +185,10 @@ test-security: ## Run the injection corpus and the security boundary tests
 	@cd daemon && $(GO) test ./security/... ./agent/prompts/... -count=1
 	@$(PNPM) --filter @qa/executor exec vitest run test/untrusted.test.ts
 
+.PHONY: test-e2e
+test-e2e: node_modules ## Run the browser-backed executor tests (needs `pnpm exec playwright install chromium`)
+	$(PNPM) --filter @qa/executor exec vitest run test/integration.test.ts test/resilience.test.ts test/planner-executability.test.ts
+
 .PHONY: gen-vectors
 gen-vectors: ## Regenerate the Go/TypeScript untrusted-framing parity vectors
 	cd daemon && UPDATE_VECTORS=1 $(GO) test ./security/ -run TestUntrustedParityVectors

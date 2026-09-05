@@ -16,7 +16,6 @@
  */
 
 import { describe, expect, it, afterAll } from 'vitest';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -26,72 +25,7 @@ import { validate } from '@qa/schema';
 import type { ApplicationMap, TestCase } from '@qa/schema';
 import { runTestCase } from '../src/runner.ts';
 import { Session } from '../src/session.ts';
-
-const REPO_ROOT = join(__dirname, '..', '..', '..');
-const FX_TSCONFIG = join(REPO_ROOT, 'e2e', 'fixture-app', 'tsconfig.json');
-const FX_ENTRY = join(REPO_ROOT, 'e2e', 'fixture-app', 'src', 'server.ts');
-const TSX_BIN = join(REPO_ROOT, 'daemon', 'executor', 'node_modules', '.bin', 'tsx');
-
-/** True when the playwright chromium binary is on disk. */
-function chromiumAvailable(): boolean {
-  // Playwright reports its cache via the env var or ~/.cache/ms-playwright
-  // — we check the latter because that is what `playwright install` writes.
-  const cache = join(process.env['HOME'] ?? tmpdir(), '.cache', 'ms-playwright');
-  return existsSync(cache) && existsSync(TSX_BIN);
-}
-
-class FixtureApp {
-  private proc: ChildProcessWithoutNullStreams | undefined;
-  private port = 0;
-  readonly baseUrl: string;
-
-  constructor() {
-    this.baseUrl = '';
-  }
-
-  async start(): Promise<void> {
-    if (!chromiumAvailable()) {
-      throw new Error('chromium-not-installed');
-    }
-    const proc = spawn(TSX_BIN, [FX_ENTRY], {
-      cwd: join(REPO_ROOT, 'e2e', 'fixture-app'),
-      env: { ...process.env, FIXTURE_USER: 'admin@example.test', FIXTURE_PASSWORD: 'letmein' },
-    });
-    this.proc = proc;
-    const port = await new Promise<number>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('fixture did not start within 10s')), 10_000);
-      proc.stdout.on('data', (chunk: Buffer) => {
-        const text = chunk.toString('utf8');
-        const match = /^FIXTURE_PORT=(\d+)/m.exec(text);
-        if (match !== null) {
-          clearTimeout(timer);
-          resolve(Number(match[1]));
-        }
-      });
-      proc.on('error', (err) => { clearTimeout(timer); reject(err); });
-      proc.stderr.on('data', (chunk: Buffer) => {
-        // Surface any startup error
-        if (chunk.length > 0) process.stderr.write(`fixture-app: ${chunk}`);
-      });
-    });
-    this.port = port;
-    (this as { baseUrl: string }).baseUrl = `http://127.0.0.1:${port}`;
-  }
-
-  async stop(): Promise<void> {
-    if (this.proc === undefined) return;
-    this.proc.kill('SIGTERM');
-    await new Promise<void>((resolve) => {
-      this.proc?.on('exit', () => resolve());
-      setTimeout(resolve, 1500);
-    });
-    this.proc = undefined;
-  }
-
-  url(path: string): string {
-    return `${this.baseUrl}${path}`;
-  }
-}
+import { FixtureApp, chromiumAvailable, FIXTURE_USER, FIXTURE_PASSWORD } from './fixture-app.ts';
 
 const appMap: ApplicationMap = {
   version: 1,
@@ -182,7 +116,7 @@ describe.skipIf(!chromiumAvailable())('integration: login + create employee (det
         appMap: localMap,
         artifactDir,
         storageKeyPrefix: 'orgs/test/runs/2026-09-04/int-run',
-        fixtureCredentials: { logged_in_as_admin: { username: 'admin@example.test', password: 'letmein' } },
+        fixtureCredentials: { logged_in_as_admin: { username: FIXTURE_USER, password: FIXTURE_PASSWORD } },
       });
       const artifacts = result.artifacts.map((a) => a.key);
       return { result, artifacts };
@@ -243,7 +177,7 @@ describe.skipIf(!chromiumAvailable())('integration: login + create employee (det
         appMap: localMap,
         artifactDir,
         storageKeyPrefix: 'orgs/test/runs/2026-09-04/int-run',
-        fixtureCredentials: { logged_in_as_admin: { username: 'admin@example.test', password: 'letmein' } },
+        fixtureCredentials: { logged_in_as_admin: { username: FIXTURE_USER, password: FIXTURE_PASSWORD } },
       });
       // Read the screenshot artifact back and confirm it is a real PNG.
       const shot = result.artifacts.find((a) => a.kind === 'screenshot');
@@ -281,4 +215,3 @@ describe.skipIf(!chromiumAvailable())('integration: login + create employee (det
 });
 
 void writeFile; // ensure import is used
-void FX_TSCONFIG; // ensure import is used

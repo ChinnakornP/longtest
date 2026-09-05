@@ -344,11 +344,24 @@ func (r *Runner) buildPrompt(t Task, nonce, contract string, attempt int, feedba
 // failing field. A document that is an array of contract documents — the
 // analysis phase's findings — is checked element by element, because the
 // contract describes one finding and an array of them is not one.
+//
+// [Task.Review] runs after, and only after, the schema passes. Running it on a
+// malformed document would produce a page of confusing complaints about fields
+// that are not there, on top of the one true complaint that the document is not
+// a contract document at all.
 func (r *Runner) validate(t Task, output []byte) []string {
 	if len(output) == 0 {
 		return []string{fmt.Sprintf("%s is empty: the CLI wrote no answer", t.outputName())}
 	}
 
+	problems := r.schemaProblems(t, output)
+	if len(problems) > 0 || t.Review == nil {
+		return problems
+	}
+	return t.Review(output)
+}
+
+func (r *Runner) schemaProblems(t Task, output []byte) []string {
 	if !t.OutputAsList {
 		return validationProblems(t.OutputSchema, output)
 	}

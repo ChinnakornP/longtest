@@ -34,7 +34,44 @@ const DEFAULT_FIXTURES: Readonly<Record<string, FixtureHandler>> = {
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.waitForURL(/\/(employees|dashboard)/, { timeout: 15_000 });
   },
+
+  /**
+   * A record that is known to exist, for the cases that are about finding or
+   * rejecting one rather than about creating one.
+   *
+   * It seeds through the application's own form rather than through a back
+   * door: a fixture that wrote straight to storage would establish a state the
+   * application itself cannot produce, and a test passing against that state
+   * proves nothing.
+   *
+   * Idempotent. A precondition runs before every case that declares it, and a
+   * handler that failed the second time would make a suite's outcome depend on
+   * the order its cases happened to run in.
+   */
+  'seeded_employee': async (page, ctx) => {
+    const base = ctx.baseUrl.replace(/\/+$/, '');
+    await page.goto(`${base}/employees?q=${encodeURIComponent(SEEDED_EMPLOYEE_EMAIL)}`, {
+      waitUntil: 'load',
+    });
+    if ((await page.getByTestId('employee-row').count()) > 0) return;
+
+    await page.goto(`${base}/employees/new`, { waitUntil: 'load' });
+    await page.getByTestId('employee-first-name').fill('Seeded');
+    await page.getByTestId('employee-last-name').fill('Employee');
+    await page.getByTestId('employee-email').fill(SEEDED_EMPLOYEE_EMAIL);
+    await page.getByTestId('employee-save').click();
+    await page.waitForURL(/\/employees/, { timeout: 15_000 });
+  },
 };
+
+/**
+ * The address `fixture:seeded_employee` guarantees exists.
+ *
+ * Exported because a test case that searches for the seeded row has to search
+ * for something, and a literal repeated in a plan and in this handler is a
+ * literal that drifts.
+ */
+export const SEEDED_EMPLOYEE_EMAIL = 'seeded@example.test';
 
 export async function establishFixtures(
   preconditions: readonly Precondition[] | undefined,

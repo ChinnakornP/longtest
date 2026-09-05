@@ -449,6 +449,113 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/v1/projects/{projectID}/coverage:
+    get:
+      tags: [projects]
+      summary: What this project should be tested for and is not
+      description: |
+        Compares the Application Map with the approved suite and reports the
+        workflows nothing walks end to end, the pages nothing reaches, and the
+        contract categories with no approved case at all.
+
+        It is computed, not generated: same map and same suite, same report.
+        A project with no Application Map yet is a 404 — nothing can be said
+        about the coverage of an application nobody has discovered, and an
+        empty report would say the opposite.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CoverageReport' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/projects/{projectID}/fixtures:
+    get:
+      tags: [projects]
+      summary: List the project's registered fixture names
+      description: |
+        A fixture is a starting state a run can establish, referenced from a
+        test case as `fixture:<name>`. This endpoint returns names and
+        descriptions. It cannot return a credential because the registry holds
+        none: the values live in the daemon's sealed store on the operator's
+        own machine, under a key this backend never has.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fixtures:
+                    type: array
+                    items: { $ref: '#/components/schemas/Fixture' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [projects]
+      summary: Register a fixture name
+      description: |
+        Idempotent: registering the same name again updates its description
+        and returns it, so this can be run from a provisioning script twice.
+
+        The body has no field for a username or a password, deliberately. A
+        planner that references an unregistered fixture has its whole plan
+        rejected, which is what this list is for.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  pattern: '^[a-z][a-z0-9_]{0,63}$'
+                  example: logged_in_as_admin
+                description: { type: string, maxLength: 500 }
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Fixture' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /api/v1/projects/{projectID}/fixtures/{name}:
+    delete:
+      tags: [projects]
+      summary: Remove a fixture name
+      description: |
+        Test cases that reference the name are left alone: deleting them would
+        throw away a reviewer's work over a registry edit. The consequence is
+        visible anyway — the next planning ingest rejects any case naming it.
+      parameters:
+        - $ref: '#/components/parameters/OrgHeader'
+        - $ref: '#/components/parameters/ProjectPath'
+        - name: name
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-z][a-z0-9_]{0,63}$' }
+      responses:
+        '204': { description: Removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /api/v1/test-cases/{testCaseID}:
     get:
       tags: [test-cases]
@@ -899,6 +1006,117 @@ components:
       type: string
       enum: [draft, approved, archived]
 
+    TestCaseCategory:
+      type: string
+      enum: [functional, validation, navigation, ui_behavior, error_handling]
+      description: Frozen at v1 by packages/qa-schema/schemas/test-case.schema.json.
+
+    Fixture:
+      type: object
+      required: [name, reference, createdAt]
+      properties:
+        name: { type: string, example: logged_in_as_admin }
+        reference:
+          type: string
+          description: The exact string a test case's `preconditions` must use.
+          example: 'fixture:logged_in_as_admin'
+        description: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    CoverageStatus:
+      type: string
+      enum: [covered, partial, uncovered]
+      description: |
+        `covered` means one approved case walks the whole path. The union of
+        several cases each walking part of it is `partial`, not `covered`:
+        three cases doing a third each is not the same as anyone having tested
+        the workflow.
+
+    RiskLevel:
+      type: string
+      enum: [high, medium, low]
+
+    CoverageSuggestion:
+      type: object
+      required: [category, reason]
+      properties:
+        category: { $ref: '#/components/schemas/TestCaseCategory' }
+        reason:
+          type: string
+          description: Why this case is suggested, in one sentence.
+
+    CoverageReport:
+      type: object
+      required: [projectId, approvedCases, workflows, pages, categories, suggestedTestCount, summary]
+      properties:
+        projectId: { type: string, format: uuid }
+        generatedAtRunId:
+          type: string
+          format: uuid
+          description: |
+            The discovery run the map came from, so a reader can tell a gap in
+            the application from a gap in what has been looked at.
+        approvedCases: { type: integer }
+        workflows:
+          type: array
+          items:
+            type: object
+            required: [ref, name, status, coverageRatio, coveringCaseRefs, authRequired, risk, suggestedTests]
+            properties:
+              ref: { type: string }
+              name: { type: string }
+              expectedOutcome: { type: string }
+              status: { $ref: '#/components/schemas/CoverageStatus' }
+              coverageRatio:
+                type: number
+                description: The best single case's share of the path, 0..1.
+              coveringCaseRefs:
+                type: array
+                items: { type: string }
+              missingRefs:
+                type: array
+                items: { type: string }
+              authRequired: { type: boolean }
+              risk: { $ref: '#/components/schemas/RiskLevel' }
+              suggestedTests: { type: integer }
+              suggestions:
+                type: array
+                items: { $ref: '#/components/schemas/CoverageSuggestion' }
+        pages:
+          type: array
+          description: |
+            Pages that no workflow's path already accounts for. Listing a gap
+            twice would count it twice in suggestedTestCount.
+          items:
+            type: object
+            required: [ref, path, status, authRequired, risk, suggestedTests]
+            properties:
+              ref: { type: string }
+              path: { type: string }
+              title: { type: string }
+              status: { $ref: '#/components/schemas/CoverageStatus' }
+              authRequired: { type: boolean }
+              risk: { $ref: '#/components/schemas/RiskLevel' }
+              suggestedTests: { type: integer }
+              suggestions:
+                type: array
+                items: { $ref: '#/components/schemas/CoverageSuggestion' }
+        categories:
+          type: array
+          items:
+            type: object
+            required: [category, approved, suggestedTests]
+            properties:
+              category: { $ref: '#/components/schemas/TestCaseCategory' }
+              approved: { type: integer }
+              suggestedTests: { type: integer }
+        suggestedTestCount:
+          type: integer
+          description: The sum of every suggestion in the report.
+        summary:
+          type: string
+          description: One sentence assembled from the counts, never model prose.
+
     TestCase:
       type: object
       required: [id, projectId, ref, name, priority, category, status, version, payload]
@@ -908,7 +1126,7 @@ components:
         ref: { type: string, description: 'Human-facing handle inside a project, e.g. TC-001.' }
         name: { type: string }
         priority: { type: string, enum: [critical, high, medium, low] }
-        category: { type: string, enum: [functional, validation, navigation, ui_behavior, error_handling] }
+        category: { $ref: '#/components/schemas/TestCaseCategory' }
         status: { $ref: '#/components/schemas/TestCaseStatus' }
         version: { type: integer }
         sourceRunId: { type: string, format: uuid }

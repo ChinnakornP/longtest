@@ -39,3 +39,17 @@ ORDER BY p.path, e.ref;
 
 -- name: DeleteElement :execrows
 DELETE FROM elements WHERE org_id = $1 AND id = $2;
+
+-- Every element ref of a project, as bare strings.
+--
+-- This is the set a planned test case's `target.ref` values are checked
+-- against before a single case is stored. It is refs only rather than
+-- ListElementsForProject's full rows because the check is set membership over
+-- a few thousand short strings, and materialising locators and labels to throw
+-- them away is the allocation this avoids on every planning ingest.
+-- name: ListElementRefsForProject :many
+SELECT e.ref
+FROM elements e
+JOIN pages p ON p.id = e.page_id AND p.org_id = e.org_id
+WHERE e.org_id = $1 AND p.project_id = $2
+ORDER BY e.ref;

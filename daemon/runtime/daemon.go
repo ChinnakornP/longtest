@@ -79,6 +79,15 @@ type AgentTask struct {
 	RunID  string
 	// BaseURL is the application under test.
 	BaseURL string
+	// FixtureNames are the logins this run can establish, restated to the
+	// model. Names only: the values are in the daemon's sealed store and are
+	// never rendered into a prompt.
+	FixtureNames []string
+	// Review is the phase's own gate on a schema-valid answer, run inside the
+	// retry loop so its findings become the next attempt's feedback. Nil means
+	// the schema is the only bar, which is right for a phase whose output has
+	// nothing outside the contract to check it against.
+	Review func(output []byte) []string
 }
 
 // AgentRunner runs one agent phase and returns the validated out.json.

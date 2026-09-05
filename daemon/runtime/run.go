@@ -249,7 +249,7 @@ func (rc *runController) execute(ctx context.Context) resultPayload {
 		switch phase.workspace {
 		case workspace.PhaseDiscovery:
 			var discovered qaschema.ApplicationMap
-			phaseErr = rc.agentPhase(ctx, ws, phase, "application-map@1", nil, &discovered)
+			phaseErr = rc.agentPhase(ctx, ws, phase, "application-map@1", nil, nil, &discovered)
 			if phaseErr == nil {
 				appMap = &discovered
 				result.AppMap = &discovered
@@ -266,10 +266,15 @@ func (rc *runController) execute(ctx context.Context) resultPayload {
 				phaseErr = failure(qaschema.RunErrorCodeInternal, encodeErr, "could not write the planning inputs")
 				break
 			}
-			phaseErr = rc.agentPhase(ctx, ws, phase, "test-plan@1", inputs, &plan)
+			// The gate travels with the task rather than running after it, so
+			// a rejection becomes the next attempt's feedback instead of the
+			// run's cause of death. See daemon/runtime/plan.go.
+			review := planReview(appMap, rc.payload.BaseURL, rc.knownFixtures(), nil)
+			phaseErr = rc.agentPhase(ctx, ws, phase, "test-plan@1", inputs, review, &plan)
 			if phaseErr == nil {
 				result.TestPlan = &plan
 				testCases = plan.TestCases
+				rc.narratePlan(&plan)
 			}
 		case workspace.PhaseExecution:
 			if appMap == nil {
@@ -361,8 +366,8 @@ func phasesFor(mode qaschema.RunAssignPayloadMode) []phase {
 }
 
 // agentPhase runs one AI CLI phase whose out.json is a single document.
-func (rc *runController) agentPhase(ctx context.Context, ws *workspace.Workspace, ph phase, schemaID string, inputs map[string][]byte, out any) error {
-	raw, err := rc.runAgent(ctx, ws, ph, schemaID, inputs)
+func (rc *runController) agentPhase(ctx context.Context, ws *workspace.Workspace, ph phase, schemaID string, inputs map[string][]byte, review func([]byte) []string, out any) error {
+	raw, err := rc.runAgent(ctx, ws, ph, schemaID, inputs, review)
 	if err != nil {
 		return err
 	}
@@ -379,7 +384,7 @@ func (rc *runController) agentPhase(ctx context.Context, ws *workspace.Workspace
 // validated against schemaID on its own. The elements are returned as the
 // bytes that were validated, not as decoded structs: see resultPayload.
 func (rc *runController) agentListPhase(ctx context.Context, ws *workspace.Workspace, ph phase, schemaID string, inputs map[string][]byte) ([]json.RawMessage, error) {
-	raw, err := rc.runAgent(ctx, ws, ph, schemaID, inputs)
+	raw, err := rc.runAgent(ctx, ws, ph, schemaID, inputs, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -412,7 +417,7 @@ func (rc *runController) validateAgainst(schemaID string, raw []byte, ph phase) 
 }
 
 // runAgent performs the file exchange itself.
-func (rc *runController) runAgent(ctx context.Context, ws *workspace.Workspace, ph phase, schemaID string, inputs map[string][]byte) ([]byte, error) {
+func (rc *runController) runAgent(ctx context.Context, ws *workspace.Workspace, ph phase, schemaID string, inputs map[string][]byte, review func([]byte) []string) ([]byte, error) {
 	runner := rc.daemon.deps.Agent
 	if runner == nil {
 		return nil, failure(qaschema.RunErrorCodeAgentNotAvailable, nil,
@@ -425,12 +430,14 @@ func (rc *runController) runAgent(ctx context.Context, ws *workspace.Workspace, 
 	}
 
 	task := AgentTask{
-		Phase:    ph.workspace,
-		Dir:      dir,
-		SchemaID: schemaID,
-		Inputs:   inputs,
-		RunID:    rc.payload.RunID,
-		BaseURL:  rc.payload.BaseURL,
+		Phase:        ph.workspace,
+		Dir:          dir,
+		SchemaID:     schemaID,
+		Inputs:       inputs,
+		RunID:        rc.payload.RunID,
+		BaseURL:      rc.payload.BaseURL,
+		FixtureNames: rc.fixtureNames(),
+		Review:       review,
 	}
 	if rc.payload.Agent != nil {
 		task.Agent = qaschema.AgentCapabilityName(*rc.payload.Agent)

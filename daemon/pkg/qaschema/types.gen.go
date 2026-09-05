@@ -699,14 +699,23 @@ type Ref = string
 
 // RunAssignPayload is part of the generated contract types.
 type RunAssignPayload struct {
-	RunID          string                 `json:"runId"`
-	Mode           RunAssignPayloadMode   `json:"mode"`
-	ProjectID      string                 `json:"projectId"`
-	BaseURL        string                 `json:"baseUrl"`
-	Agent          *RunAssignPayloadAgent `json:"agent,omitempty"`
-	AppMap         *ApplicationMap        `json:"appMap,omitempty"`
-	TestCases      []TestCase             `json:"testCases,omitempty"`
-	ArtifactUpload ArtifactUpload         `json:"artifactUpload"`
+	RunID     string                 `json:"runId"`
+	Mode      RunAssignPayloadMode   `json:"mode"`
+	ProjectID string                 `json:"projectId"`
+	BaseURL   string                 `json:"baseUrl"`
+	Agent     *RunAssignPayloadAgent `json:"agent,omitempty"`
+	AppMap    *ApplicationMap        `json:"appMap,omitempty"`
+	TestCases []TestCase             `json:"testCases,omitempty"`
+
+	// Fixtures — Names of the fixtures registered for this project, without the
+	// `fixture:` prefix. Added in 1.1.0, so that a planner can be told which
+	// logins it may reference and the daemon can reject a plan that invented one
+	// while the model is still there to be asked again. Names only, and there is
+	// no property here that could carry a value: the credentials live in the
+	// daemon's own store, and the backend that sends this frame does not have
+	// them.
+	Fixtures       []string       `json:"fixtures,omitempty"`
+	ArtifactUpload ArtifactUpload `json:"artifactUpload"`
 }
 
 // RunAssignPayloadAgent is part of the generated contract types.

@@ -159,6 +159,23 @@ type Task struct {
 	// findings.
 	OutputAsList bool
 
+	// Review is a second gate applied to an answer that already matches its
+	// schema, returning one line per problem and nil when there is none.
+	//
+	// It exists because the schema cannot express the checks that matter most.
+	// A test plan can be a flawless test-plan@1 and still name an element ref
+	// no page has, a fixture this run cannot establish, or a host outside the
+	// allowlist — and none of those is knowable from the contract alone, only
+	// from the run's own application map and policy. Wiring the check here
+	// rather than at the call site is what puts it inside the retry loop: its
+	// findings become the next attempt's feedback, framed as untrusted like
+	// any other, so a rejected plan is re-asked for with the reasons attached
+	// instead of failing the run on the first try.
+	//
+	// It must be a pure function of the bytes: it runs once per attempt, and a
+	// check with a side effect would apply it up to MaxAttempts times.
+	Review func(output []byte) []string
+
 	// Inputs are files placed in WorkspaceDir before the CLI runs, keyed by
 	// name. Large context travels this way, never inlined into the prompt.
 	Inputs map[string][]byte

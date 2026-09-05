@@ -103,3 +103,38 @@ SELECT * FROM test_cases
 WHERE org_id = $1
   AND project_id = $2
   AND ref = ANY (sqlc.arg(refs)::text[]);
+
+-- The dedupe read for the planner ingest: every existing case's ref, status
+-- and payload, so a freshly planned case whose normalised steps match one of
+-- them can be dropped instead of stored as a second row for the same test.
+--
+-- Every status, not just approved. An approved match must not be re-queued for
+-- review, an archived one must not come back after somebody retired it, and a
+-- draft one must not be stored twice under two ids — which is what a re-plan
+-- produces, because a planner renumbers its cases every run.
+--
+-- Payloads rather than a stored fingerprint column on purpose: the
+-- normalisation is contract-aware Go (see internal/testcase/plan.go), and a
+-- fingerprint written by an older version of that function would silently stop
+-- matching one written by a newer one, with no backfill path and no way to
+-- notice. Normalising both sides at read time cannot drift.
+-- name: ListTestCasePayloads :many
+SELECT id, ref, status, payload FROM test_cases
+WHERE org_id = $1 AND project_id = $2
+ORDER BY ref;
+
+-- The coverage read: what the project actually runs as regression. Approved
+-- only, because a draft nobody has read is not a test this project runs.
+-- name: ListApprovedTestCasePayloads :many
+SELECT id, ref, payload FROM test_cases
+WHERE org_id = $1 AND project_id = $2 AND status = 'approved'
+ORDER BY ref;
+
+-- How many approved cases a project has in each category, for the coverage
+-- report. Counted in the database rather than by loading the suite: the
+-- coverage endpoint already reads every approved payload for its ref sets, and
+-- this is the one number it needs that does not come from them.
+-- name: CountApprovedTestCasesByCategory :many
+SELECT category, count(*) AS total FROM test_cases
+WHERE org_id = $1 AND project_id = $2 AND status = 'approved'
+GROUP BY category;
