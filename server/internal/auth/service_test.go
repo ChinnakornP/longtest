@@ -71,7 +71,7 @@ func TestSignupLoginMe(t *testing.T) {
 	}
 
 	// The session cookie must be set, httpOnly and SameSite=Lax.
-	cookie := resp.Cookie("qa_session")
+	cookie := resp.Cookie(authtest.SessionCookieName())
 	if cookie == nil {
 		t.Fatal("signup did not set a session cookie")
 	}
@@ -270,7 +270,7 @@ func TestLogoutRevokesTheSession(t *testing.T) {
 	owner.Get(t, "/api/v1/me").ExpectStatus(t, http.StatusOK)
 
 	resp := owner.Post(t, "/api/v1/auth/logout", nil).ExpectStatus(t, http.StatusNoContent)
-	if cookie := resp.Cookie("qa_session"); cookie == nil || cookie.MaxAge >= 0 {
+	if cookie := resp.Cookie(authtest.SessionCookieName()); cookie == nil || cookie.MaxAge >= 0 {
 		t.Fatal("logout must expire the session cookie")
 	}
 

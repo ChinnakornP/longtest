@@ -156,43 +156,65 @@ written against the schema, not against each other.
 
 ## Security model
 
-The product's whole job is to open web pages nobody vetted. The design assumes
-every page is trying to hijack the agent.
+The product's whole job is to open web pages nobody vetted, and then hand what
+it read to an AI CLI that can run commands on the operator's own machine. The
+design assumes every page is trying to hijack the agent.
+
+Full detail, including what the system does **not** guarantee, is in
+[`docs/SECURITY.md`](docs/SECURITY.md); the attacks the controls answer are in
+[`docs/threat-model.md`](docs/threat-model.md). In outline:
 
 - **Page content is data, never instruction.** Anything read out of a page —
-  text, `alt`, `title`, comments, response bodies, file names — is fenced with
-  explicit untrusted markers before an AI CLI sees it, and the markers are
-  stripped from the payload so a page cannot close the fence early.
-- **Deny by default outbound.** The browser reaches allow-listed origins
-  through a proxy. URLs discovered on a page are never fetched automatically.
-- **Humans approve irreversible actions:** payments, form submits, credential
-  entry, downloading and running files, permission changes.
+  text, `alt`, `title`, comments, response bodies, console output, file names —
+  is framed with markers carrying a per-run nonce the page cannot observe, and
+  both markers are stripped from the payload so a page cannot close the frame
+  early. `daemon/security`, mirrored byte for byte in
+  `daemon/executor/src/untrusted.ts`.
+- **The plan is gated, not just the prompt.** A prompt boundary whose failure
+  mode is "the model was persuaded" is not a control, so `security.PlanGate`
+  validates what the model produced before any of it runs: off-allowlist
+  navigation, a literal credential, an invented fixture, an unflagged raw
+  locator, an unknown action.
+- **18 injection cases across 9 channels run in CI** (`e2e/injection-corpus`)
+  and assert two properties: page content never reaches a prompt's instruction
+  region, and the plan each injection was fishing for is refused.
+- **Deny by default outbound.** Exact-host allowlist, no implied subdomains,
+  no `file:`/`javascript:`/`data:`, and private and link-local addresses behind
+  an explicit opt-in.
 - **Credentials never share a context with a page.** Target-application logins
-  are referenced as fixtures (`fixture:logged_in_as_admin`) and injected at
-  request time; the real values never reach a model or a workspace.
-- **The browser is sandboxed:** its own container, non-root, read-only rootfs,
-  dropped capabilities, no host network, no docker socket, ephemeral profile
-  per session, and CPU/RAM/PID/time limits.
-- **Everything is attributable.** Navigations and tool calls are logged with
-  their provenance — operator-initiated or page-initiated — and secrets are
-  redacted before anything is written.
-
-Enforcement is delivered by T9; `daemon/executor/src/untrusted.ts` and
-`server/pkg/db.RedactDSN` are the first two pieces in the tree.
+  are referenced as fixtures (`fixture:logged_in_as_admin`), sealed at rest,
+  and scrubbed — in every encoding they travel in — out of prompts, workspace
+  files, logs, events and artifacts.
+- **The AI CLI is confined.** Landlock restricts it to the run's workspace,
+  `no_new_privs` closes the setuid escape, rlimits bound it, and it inherits an
+  environment allowlist rather than the daemon's own.
+- **Humans approve irreversible actions** — payments, deletes, permission
+  changes. **Not built yet;** it is the first row of the Known gaps table in
+  `docs/SECURITY.md`.
 
 **This repository is public.** Never commit a `.env`, a key, or a real
 credential. `.env.example` holds placeholders only, and CI fails the build on a
 secret-scan hit.
 
+To report a vulnerability, open a private security advisory — see
+[`docs/SECURITY.md`](docs/SECURITY.md#reporting-a-vulnerability). Please do not
+open a public issue.
+
 ## Contributing
 
 `make lint` and `make test` must pass before you push; CI runs the same
-targets, so a green local run predicts a green CI run.
+targets, so a green local run predicts a green CI run. `make test-security`
+runs the injection corpus and the boundary tests on their own.
 
-> **CI is not active yet.** The pipeline lives at
-> `.github/ci-workflow-pending/ci.yml` because the bootstrap token lacked the
-> `workflow` scope. Moving it into `.github/workflows/` is a one-line `git mv`
-> plus a push from a credential that has that scope — see the README in that
-> directory. Changes under `.github/`, `docker/`, `docker-compose.yml`,
-`.env.example` or `packages/qa-schema/` need a review from the owners listed in
-`CODEOWNERS`.
+CI (`.github/workflows/ci.yml`) has four gates: `lint`, `test`, `security`,
+`test-db`.
+
+> **Pending workflow change.** An aggregate `ci` job and the injection-corpus
+> gate are parked at `.github/ci-workflow-pending/ci.yml` because the agent's
+> credential lacks the GitHub `workflow` scope. See the README there — it is a
+> `cp` and a push from a credential that has the scope, plus one branch
+> protection setting.
+
+Changes under `.github/`, `docker/`, `docker-compose.yml`, `.env.example`,
+`packages/qa-schema/`, `daemon/security/` or `daemon/agent/prompts/` need a
+review from the owners listed in `CODEOWNERS`.

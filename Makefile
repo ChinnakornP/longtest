@@ -180,6 +180,20 @@ tools: ## Install the pinned Go developer tooling
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
 	$(GO) install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
 
+.PHONY: test-security
+test-security: ## Run the injection corpus and the security boundary tests
+	@cd daemon && $(GO) test ./security/... ./agent/prompts/... -count=1
+	@$(PNPM) --filter @qa/executor exec vitest run test/untrusted.test.ts
+
+.PHONY: gen-vectors
+gen-vectors: ## Regenerate the Go/TypeScript untrusted-framing parity vectors
+	cd daemon && UPDATE_VECTORS=1 $(GO) test ./security/ -run TestUntrustedParityVectors
+	@echo "re-run 'make test-security' to check the TypeScript side against them"
+
+.PHONY: injection-corpus
+injection-corpus: node_modules ## Serve the hostile fixture app (live injection runs)
+	$(PNPM) --filter @qa/injection-corpus run start
+
 .PHONY: scan-secrets
 scan-secrets: ## Run the same secret scan CI runs
 	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo \

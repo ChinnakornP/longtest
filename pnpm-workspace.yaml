@@ -3,6 +3,7 @@ packages:
   - packages/*
   - daemon/executor
   - e2e/fixture-app
+  - e2e/injection-corpus
 
 # Supply-chain guard: refuse to resolve a package version that was published
 # less than 24h ago. Compromised-maintainer npm attacks are caught and yanked

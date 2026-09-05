@@ -190,6 +190,13 @@ func SessionConfig() auth.SessionConfig {
 	return cfg
 }
 
+// SessionCookieName is the cookie name the fixtures issue under. It is derived
+// rather than written out, because the name follows from Secure and Domain:
+// hard-coding it here would let the derivation change without a test noticing.
+func SessionCookieName() string {
+	return SessionConfig().EffectiveCookieName()
+}
+
 // Env is one test's world: a scratch database and a server running the handler
 // under test.
 type Env struct {

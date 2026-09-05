@@ -11,14 +11,21 @@
  * can ask for the wire version before it sends a `session.open`.
  */
 
-import { UNTRUSTED_END, UNTRUSTED_START, wrapUntrusted } from './untrusted.ts';
+import {
+  UNTRUSTED_CLOSE,
+  UNTRUSTED_END,
+  UNTRUSTED_START,
+  wrapBlock,
+  wrapUntrusted,
+} from './untrusted.ts';
 import { runCli, printCliHelp, type CliOptions } from './cli-mode.ts';
 import { runStdioLoop } from './stdio-loop.ts';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir, rm } from 'node:fs/promises';
 
-export { UNTRUSTED_END, UNTRUSTED_START, wrapUntrusted };
+export { UNTRUSTED_CLOSE, UNTRUSTED_END, UNTRUSTED_START, wrapBlock, wrapUntrusted };
+export type { UntrustedBlock, UntrustedKind } from './untrusted.ts';
 
 const VERSION = '0.0.0';
 

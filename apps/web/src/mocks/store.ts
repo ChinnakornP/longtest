@@ -67,7 +67,13 @@ const globalForMock = globalThis as unknown as { __qaMockStore?: MockStore };
 export const mockStore = globalForMock.__qaMockStore ?? new MockStore();
 globalForMock.__qaMockStore = mockStore;
 
-export const SESSION_COOKIE = 'qa_session';
+// Matches auth.SessionCookieName(secure: true, domain: "") on the Go side. The
+// mock sets the cookie Secure, Path=/ and Domain-less (see SESSION_COOKIE_ATTRS
+// in ./http.ts), which are exactly the `__Host-` preconditions — and browsers
+// treat http://localhost as a secure context, so it works in dev too. Keeping
+// the name in step means swapping the mock for the real backend
+// (docs/adr/0008-web-ships-no-backend.md) is not also a silent session reset.
+export const SESSION_COOKIE = '__Host-qa_session';
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const PAIRING_TTL_MS = 15 * 60 * 1000;
 
