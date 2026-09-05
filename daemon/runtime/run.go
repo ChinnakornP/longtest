@@ -293,22 +293,15 @@ func (rc *runController) execute(ctx context.Context) resultPayload {
 			result.Executions = append(result.Executions, executions...)
 			result.Artifacts = append(result.Artifacts, uploaded...)
 		case workspace.PhaseAnalysis:
-			inputs, encodeErr := jsonInputs(map[string]any{
-				"execution.json":  result.Executions,
-				"test-cases.json": testCases,
-			})
-			if encodeErr != nil {
-				phaseErr = failure(qaschema.RunErrorCodeInternal, encodeErr, "could not write the analysis inputs")
-				break
-			}
-			// finding@1 describes ONE finding, and the analyst produces one
-			// per failed execution, so its out.json is an array and every
-			// element is validated separately.
+			// Everything this phase does is in analyze.go: collect the
+			// evidence, decide what a rule can decide, ask the model about the
+			// rest behind a gate, and guarantee that every failed execution
+			// ends up with a finding.
 			var findings []json.RawMessage
-			findings, phaseErr = rc.agentListPhase(ctx, ws, phase, "finding@1", inputs)
-			if phaseErr == nil {
-				result.Findings = append(result.Findings, findings...)
-			}
+			var evidence []qaschema.Artifact
+			findings, evidence, phaseErr = rc.analyse(ctx, ws, phase, result.Executions, testCases, appMap, uploader)
+			result.Findings = append(result.Findings, findings...)
+			result.Artifacts = append(result.Artifacts, evidence...)
 		}
 
 		if phaseErr != nil {
@@ -378,27 +371,6 @@ func (rc *runController) agentPhase(ctx context.Context, ws *workspace.Workspace
 		return failure(qaschema.RunErrorCodeAgentOutputInvalid, err, "could not decode the %s output", ph.event)
 	}
 	return nil
-}
-
-// agentListPhase runs a phase whose out.json is an array of documents, each
-// validated against schemaID on its own. The elements are returned as the
-// bytes that were validated, not as decoded structs: see resultPayload.
-func (rc *runController) agentListPhase(ctx context.Context, ws *workspace.Workspace, ph phase, schemaID string, inputs map[string][]byte) ([]json.RawMessage, error) {
-	raw, err := rc.runAgent(ctx, ws, ph, schemaID, inputs, nil)
-	if err != nil {
-		return nil, err
-	}
-	var elements []json.RawMessage
-	if err := json.Unmarshal(raw, &elements); err != nil {
-		return nil, failure(qaschema.RunErrorCodeAgentOutputInvalid, err,
-			"the %s agent was asked for an array of %s documents", ph.event, schemaID)
-	}
-	for i, element := range elements {
-		if err := rc.validateAgainst(schemaID, element, ph); err != nil {
-			return nil, failure(qaschema.RunErrorCodeAgentOutputInvalid, err, "%s output item %d is invalid", ph.event, i)
-		}
-	}
-	return elements, nil
 }
 
 // validateAgainst is the last gate before a model-authored document is

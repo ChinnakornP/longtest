@@ -115,6 +115,11 @@ func (rc *runController) runTestCases(
 			result = rc.synthesiseFailure(testCase, err)
 		}
 
+		// Before the result is kept or its evidence uploaded: the ids the
+		// executor minted restart at zero for every case, and every reference
+		// to them has to move together. See artifactids.go.
+		namespaceArtifactIDs(&result, len(executions))
+
 		executions = append(executions, result)
 		if err := appendLedger(ledgerPath, result); err != nil {
 			rc.logger.Warn("could not update the execution ledger", "error", err)

@@ -15,6 +15,21 @@
  *
  * State lives in memory. Every restart is a clean state.
  *
+ * FIXTURE_BUGS injects deliberate defects, comma-separated. They exist so the
+ * Failure Analyst (T15) can be measured against failures whose true cause is
+ * known: a classifier is only checkable if somebody already knows the answer.
+ *
+ *   create-500       POST /employees answers 500 and stores nothing.
+ *   edit-not-synced  POST /employees/:id saves, the detail page shows the new
+ *                    value, and the list keeps showing the old one.
+ *
+ * Both are PRODUCT_BUG, and they fail in different places on purpose. The
+ * first is loud — a 5xx sits in the network log and the analyst does not have
+ * to reason to find it. The second is the hard one: every request is 200, the
+ * page the test lands on is correct, and the only evidence is an assertion on
+ * the list disagreeing with what was just saved. A classifier that only reads
+ * status codes calls the second one a TEST_BUG.
+ *
  * Why Node's http module and not Express: the executor does not care about
  * the framework, and we want zero `node_modules` between this app and CI.
  */
@@ -41,6 +56,31 @@ const COOKIE_NAME = 'fixture_sid';
 
 const employees: Employee[] = [];
 const sessions = new Map<string, Session>();
+
+/** Injected defects, from FIXTURE_BUGS. Empty in every normal run. */
+const bugs = new Set(
+  (process.env['FIXTURE_BUGS'] ?? '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0),
+);
+
+/**
+ * What the list renders under `edit-not-synced`: the employees as they were
+ * when created, never refreshed by an update.
+ *
+ * Modelled as a stale read rather than as a lost write, because that is the
+ * bug this shape actually has in the wild — a cache nobody invalidates on the
+ * update path. The write really did land, which is what makes it hard: the
+ * detail page proves it.
+ */
+const listSnapshot = new Map<string, Employee>();
+
+/** The rows /employees shows, which is not always the truth. */
+function listedEmployees(): Employee[] {
+  if (!bugs.has('edit-not-synced')) return employees;
+  return employees.map((e) => listSnapshot.get(e.id) ?? e);
+}
 
 function parseCookies(header: string | undefined): Record<string, string> {
   if (header === undefined) return {};
@@ -141,7 +181,8 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/employees') {
       const q = url.searchParams.get('q') ?? '';
-      const filtered = q === '' ? employees : employees.filter((e) => `${e.firstName} ${e.lastName}`.toLowerCase().includes(q.toLowerCase()));
+      const listed = listedEmployees();
+      const filtered = q === '' ? listed : listed.filter((e) => `${e.firstName} ${e.lastName}`.toLowerCase().includes(q.toLowerCase()));
       const rows = filtered.map((e) => `
 <tr data-testid="employee-row" data-id="${escapeHtml(e.id)}">
   <td>${escapeHtml(e.firstName)} ${escapeHtml(e.lastName)}</td>
@@ -190,8 +231,18 @@ const server = createServer(async (req, res) => {
         send(res, 422, html(`<p data-testid="employee-error" role="alert">Email already exists</p>`), { 'content-type': 'text/html; charset=utf-8' });
         return;
       }
+      if (bugs.has('create-500')) {
+        // The injected defect: the form is valid, the app accepts it, and the
+        // write fails on the server with nothing stored. A run sees a 500 in
+        // the network log and an employee that never appears in the list.
+        send(res, 500, html(`<p data-testid="employee-error" role="alert">Something went wrong</p>`), {
+          'content-type': 'text/html; charset=utf-8',
+        });
+        return;
+      }
       const created: Employee = { id: randomUUID(), firstName, lastName, email, createdAt: new Date().toISOString() };
       employees.push(created);
+      listSnapshot.set(created.id, { ...created });
       send(res, 302, '', { location: `/employees/${created.id}` });
       return;
     }
@@ -229,6 +280,12 @@ const server = createServer(async (req, res) => {
       if (firstName !== '') emp.firstName = firstName;
       if (lastName !== '') emp.lastName = lastName;
       if (email !== '') emp.email = email;
+      // The injected defect is the line that is missing under the bug: the
+      // update path never invalidates what the list reads from, so the write
+      // lands, the detail page shows it, and the list does not.
+      if (!bugs.has('edit-not-synced')) {
+        listSnapshot.set(emp.id, { ...emp });
+      }
       send(res, 302, '', { location: `/employees/${emp.id}` });
       return;
     }
@@ -240,7 +297,8 @@ const server = createServer(async (req, res) => {
         send(res, 404, html('<p>Not found</p>'), { 'content-type': 'text/html; charset=utf-8' });
         return;
       }
-      employees.splice(i, 1);
+      const [removed] = employees.splice(i, 1);
+      if (removed !== undefined) listSnapshot.delete(removed.id);
       send(res, 302, '', { location: '/employees' });
       return;
     }
@@ -275,4 +333,8 @@ server.listen(PORT, () => {
   // Print in a parseable form so the test harness can pick the port back
   // up without parsing `listen` log lines.
   process.stdout.write(`FIXTURE_PORT=${address.port}\n`);
+  if (bugs.size > 0) {
+    // On stderr, not stdout: stdout is the harness's parseable channel.
+    process.stderr.write(`fixture-app: injected bugs: ${[...bugs].join(', ')}\n`);
+  }
 });

@@ -44,6 +44,36 @@ func (a *fakeAgent) Tasks() []AgentTask {
 	return append([]AgentTask(nil), a.tasks...)
 }
 
+// firstArtifactID reads an id out of an evidence bundle the analysis phase
+// placed in the workspace.
+//
+// A canned analysis has to cite evidence the run really produced — that is what
+// analysis.Context checks — and the ids are namespaced per execution, so a test
+// cannot hard-code one without encoding the namespacing scheme into every
+// fixture that touches it.
+func firstArtifactID(t *testing.T, task AgentTask) string {
+	t.Helper()
+
+	for name, data := range task.Inputs {
+		if !strings.HasPrefix(name, "evidence-") {
+			continue
+		}
+		var bundle struct {
+			Artifacts []struct {
+				ID string `json:"id"`
+			} `json:"artifacts"`
+		}
+		if err := json.Unmarshal(data, &bundle); err != nil {
+			t.Fatalf("decode %s: %v", name, err)
+		}
+		if len(bundle.Artifacts) > 0 {
+			return bundle.Artifacts[0].ID
+		}
+	}
+	t.Fatalf("no evidence bundle with an artifact in the analysis inputs: %v", task.Inputs)
+	return ""
+}
+
 func mustJSON(t *testing.T, value any) []byte {
 	t.Helper()
 	data, err := json.Marshal(value)
@@ -70,7 +100,7 @@ func TestFullModeWalksEveryPhase(t *testing.T) {
 			"coverageNotes": "settings is not covered",
 		}), nil
 	}
-	agent.byPhase[workspace.PhaseAnalysis] = func(AgentTask) ([]byte, error) {
+	agent.byPhase[workspace.PhaseAnalysis] = func(task AgentTask) ([]byte, error) {
 		return mustJSON(t, []any{map[string]any{
 			"version":      1,
 			"testCaseId":   "TC-001",
@@ -78,13 +108,17 @@ func TestFullModeWalksEveryPhase(t *testing.T) {
 			"failureClass": "PRODUCT_BUG",
 			"rootCause":    "POST /api/employees returned 500",
 			"confidence":   0.94,
-			"evidence":     []any{"art-screenshot-1-png"},
+			// Read back from the evidence bundle rather than hard-coded: the
+			// ids are namespaced per execution before the analyst sees them,
+			// and the review gate rejects a citation that names nothing.
+			"evidence": []any{firstArtifactID(t, task)},
 		}}), nil
 	}
 
 	h := newHarness(t, harnessOptions{agent: agent})
 	h.executor.onRun = func(params executor.TestcaseRunParams) qaschema.ExecutionResult {
-		return writeEvidence(t, params, map[string]string{"screenshot-1.png": "png"})
+		// Failing, because only a failure is analysed.
+		return failWith(t, params, "the save button did nothing", map[string]string{"screenshot-1.png": "png"})
 	}
 
 	h.backend.ExpectType(5*time.Second, qaschema.EnvelopeTypeHello)
@@ -118,8 +152,10 @@ func TestFullModeWalksEveryPhase(t *testing.T) {
 	if _, ok := rawResult.Findings[0]["stepIndex"]; !ok {
 		t.Fatalf("stepIndex was dropped in transit: %+v", rawResult.Findings[0])
 	}
-	if len(payload.Artifacts) != 1 {
-		t.Fatalf("artifacts = %d", len(payload.Artifacts))
+	// The execution's screenshot, plus the evidence bundle the analysis phase
+	// uploaded so the finding cites something a person can open.
+	if len(payload.Artifacts) != 2 {
+		t.Fatalf("artifacts = %d, want the screenshot and the analysis evidence bundle", len(payload.Artifacts))
 	}
 
 	// Each phase gets its own directory, and the planner is handed the map as
@@ -193,6 +229,9 @@ func TestAnalystArrayIsValidatedElementByElement(t *testing.T) {
 	}}
 
 	h := newHarness(t, harnessOptions{agent: agent})
+	h.executor.onRun = func(params executor.TestcaseRunParams) qaschema.ExecutionResult {
+		return failWith(t, params, "the save button did nothing", map[string]string{"screenshot-1.png": "png"})
+	}
 	h.backend.ExpectType(5*time.Second, qaschema.EnvelopeTypeHello)
 
 	// analyze only runs in full mode, so the earlier phases are stubbed out.
@@ -225,6 +264,13 @@ func TestAnalystArrayIsValidatedElementByElement(t *testing.T) {
 	// The work done before the analyst still reaches the backend.
 	if len(payload.Executions) != 1 {
 		t.Fatalf("a failed analysis threw away the executions: %+v", payload.Executions)
+	}
+	// And so does a finding for the failure the analyst could not classify. A
+	// failed execution with nothing attached reads like a failure nobody
+	// thought worth explaining, which is the outcome this phase exists to
+	// prevent — a failed analysis is not a licence to produce it.
+	if len(payload.Findings) != 1 || payload.Findings[0].FailureClass != qaschema.FailureClassUNKNOWN {
+		t.Fatalf("findings = %+v, want one UNKNOWN for the unclassified failure", payload.Findings)
 	}
 }
 

@@ -22,68 +22,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validate } from '@qa/schema';
-import type { ApplicationMap, TestCase } from '@qa/schema';
+import type { ApplicationMap } from '@qa/schema';
 import { runTestCase } from '../src/runner.ts';
 import { Session } from '../src/session.ts';
-import { FixtureApp, chromiumAvailable, FIXTURE_USER, FIXTURE_PASSWORD } from './fixture-app.ts';
-
-const appMap: ApplicationMap = {
-  version: 1,
-  baseUrl: 'http://127.0.0.1:0', // overwritten per run
-  pages: [
-    {
-      id: 'page.login',
-      path: '/login',
-      title: 'Sign in',
-      elements: [
-        { ref: 'login.input.email', type: 'input', label: 'Email', locators: [{ kind: 'testId', value: 'login-email' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-        { ref: 'login.input.password', type: 'input', label: 'Password', locators: [{ kind: 'testId', value: 'login-password' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-        { ref: 'login.btn.submit', type: 'button', label: 'Sign in', locators: [{ kind: 'testId', value: 'login-submit' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-      ],
-    },
-    {
-      id: 'page.employees',
-      path: '/employees',
-      title: 'Employees',
-      elements: [
-        { ref: 'emp.btn.add', type: 'button', label: 'Add Employee', locators: [{ kind: 'testId', value: 'add-emp' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-        { ref: 'emp.input.first', type: 'input', label: 'First name', locators: [{ kind: 'testId', value: 'employee-first-name' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-        { ref: 'emp.input.last', type: 'input', label: 'Last name', locators: [{ kind: 'testId', value: 'employee-last-name' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-        { ref: 'emp.input.email', type: 'input', label: 'Email', locators: [{ kind: 'testId', value: 'employee-email' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-        { ref: 'emp.btn.save', type: 'button', label: 'Save', locators: [{ kind: 'testId', value: 'employee-save' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-        { ref: 'emp.table', type: 'table', label: 'Employees', locators: [{ kind: 'testId', value: 'employee-table' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-        { ref: 'emp.detail.email', type: 'text', label: 'Employee email', locators: [{ kind: 'testId', value: 'employee-email' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-        { ref: 'emp.search', type: 'input', label: 'Search', locators: [{ kind: 'testId', value: 'employee-search' }], lastSeenRunId: '00000000-0000-0000-0000-000000000001' },
-      ],
-    },
-  ],
-  workflows: [],
-};
-
-const loginAndCreateEmployee = (uniqueSuffix: string): TestCase => ({
-  version: 1,
-  id: 'TC-INT-001',
-  name: 'login and create employee',
-  priority: 'critical',
-  category: 'functional',
-  preconditions: ['fixture:logged_in_as_admin'],
-  steps: [
-    { action: 'navigate', url: '/employees' },
-    { action: 'click', target: { ref: 'emp.btn.add' } },
-    { action: 'fill', target: { ref: 'emp.input.first' }, value: `John-${uniqueSuffix}` },
-    { action: 'fill', target: { ref: 'emp.input.last' }, value: 'Doe' },
-    { action: 'fill', target: { ref: 'emp.input.email' }, value: `john-${uniqueSuffix}@example.test` },
-    { action: 'click', target: { ref: 'emp.btn.save' } },
-    { action: 'waitFor', target: { ref: 'emp.detail.email' }, state: 'visible', timeoutMs: 10_000 },
-    { action: 'navigate', url: '/employees' },
-    { action: 'waitFor', target: { ref: 'emp.table' }, state: 'visible', timeoutMs: 10_000 },
-  ],
-  assertions: [
-    { type: 'visible', target: { ref: 'emp.table' } },
-    { type: 'urlMatches', value: '^/employees' },
-    { type: 'noConsoleError', ignorePatterns: ['favicon'] },
-  ],
-});
+import {
+  FixtureApp,
+  chromiumAvailable,
+  FIXTURE_USER,
+  FIXTURE_PASSWORD,
+  employeesAppMap as appMap,
+  loginAndCreateEmployee,
+} from './fixture-app.ts';
 
 describe.skipIf(!chromiumAvailable())('integration: login + create employee (deterministic)', () => {
   const fixtures: FixtureApp[] = [];
