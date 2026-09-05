@@ -169,6 +169,60 @@ lint-ci: ## actionlint: validate the GitHub Actions workflow files
 	  echo "==> actionlint $(PARKED_WORKFLOWS)"; \
 	  $(ACTIONLINT) $(PARKED_WORKFLOWS); \
 	fi
+	@$(MAKE) --no-print-directory check-parked-workflows
+
+# A parked workflow is a patch waiting to be applied with `cp`, so it has to
+# stay a superset of the live file it will overwrite. When `main` moves and the
+# parked copy does not, applying it silently DELETES whatever landed in between
+# - that is how the actionlint gate nearly got reverted one minute after it was
+# added (LONG-25). So: `diff live parked` may contain additions only, except
+# for the exact lines the patch declares it replaces, one per line in
+# <parked-dir>/expected-removals.txt. An entry that no longer matches is an
+# error too - the declaration has to describe the patch that exists now.
+.PHONY: check-parked-workflows
+check-parked-workflows: ## Fail if a parked workflow would delete lines from the live one
+	@rc=0; \
+	for p in $(PARKED_WORKFLOWS); do \
+	  t=".github/workflows/$$(basename "$$p")"; \
+	  if [ ! -f "$$t" ]; then \
+	    echo "==> $$p: no $$t to overwrite, nothing to compare"; \
+	    continue; \
+	  fi; \
+	  allow="$$(dirname "$$p")/expected-removals.txt"; \
+	  removed=$$(diff "$$t" "$$p" | grep '^<' | cut -c3- || true); \
+	  patterns=""; \
+	  if [ -f "$$allow" ]; then \
+	    patterns=$$(grep -v '^#' "$$allow" | grep -v '^[[:space:]]*$$' || true); \
+	  fi; \
+	  unexpected=""; \
+	  if [ -n "$$removed" ]; then \
+	    if [ -n "$$patterns" ]; then \
+	      unexpected=$$(printf '%s\n' "$$removed" | grep -vxF -f <(printf '%s\n' "$$patterns") || true); \
+	    else \
+	      unexpected="$$removed"; \
+	    fi; \
+	  fi; \
+	  unused=""; \
+	  if [ -n "$$patterns" ]; then \
+	    unused=$$(printf '%s\n' "$$patterns" | grep -vxF -f <(printf '%s\n' "$$removed") || true); \
+	  fi; \
+	  if [ -n "$$unexpected" ]; then \
+	    echo "==> $$p: STALE - copying it over $$t would delete these lines:"; \
+	    printf '%s\n' "$$unexpected" | sed 's/^/    -/'; \
+	    echo "    Rebuild it from the current $$t plus the block it adds, or"; \
+	    echo "    declare the replacement in $$allow."; \
+	    rc=1; \
+	  fi; \
+	  if [ -n "$$unused" ]; then \
+	    echo "==> $$p: $$allow declares lines that $$t no longer contains:"; \
+	    printf '%s\n' "$$unused" | sed 's/^/    /'; \
+	    rc=1; \
+	  fi; \
+	  if [ -z "$$unexpected" ] && [ -z "$$unused" ]; then \
+	    echo "==> $$p: adds to $$t without removing anything unintended"; \
+	  fi; \
+	done; \
+	exit $$rc
 
 .PHONY: test
 test: test-go test-js ## Run every test suite
